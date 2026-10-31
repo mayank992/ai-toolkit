@@ -5,6 +5,8 @@
   "commands": ["commands/lesson.md"],
   "hooks": [
     {"step": 1, "event": "UserPromptSubmit", "script": "hooks/capture_prompt.py", "timeout": 5},
-    {"step": 1, "event": "Stop", "script": "hooks/capture_transcript.py", "timeout": 10}
+    {"step": 1, "event": "Stop", "script": "hooks/capture_transcript.py", "timeout": 10},
+    {"step": 2, "event": "SessionEnd", "script": "hooks/session_end.py", "timeout": 10},
+    {"step": 4, "event": "SessionStart", "script": "hooks/session_start.py", "timeout": 10}
   ]
 }

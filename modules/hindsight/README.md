@@ -5,10 +5,41 @@ Self-improving memory for Claude Code. It captures the moments where you push ba
 | Step | Status | What |
 |---|---|---|
 | 1 Capture | ✅ | Correction prompts, rejected tool uses and `/lesson` are written to a local queue |
-| 2 Distill | ⏳ | SessionEnd → Haiku turns moments into candidate lessons |
-| 3 Curate  | ⏳ | Merge, promote at 2 hits, retire, cap 50/scope, `hs review` |
-| 4 Inject  | ⏳ | SessionStart loads lessons for this repo, language or global |
-| 5 Measure | ⏳ | Per-lesson efficacy and pushbacks/session report |
+| 2 Distill | ✅ | SessionEnd → background `claude -p --model haiku` turns moments into candidate lessons (rule fallback) |
+| 3 Curate  | ✅ | Merge duplicates, promote after hits in 2 sessions, retire unused/ineffective, cap 50/scope, `hs review` |
+| 4 Inject  | ✅ | SessionStart loads lessons for this repo, its languages, and global ones (≤15 lines) |
+| 5 Measure | ✅ | `hs report`: pushbacks/session by week, before→after efficacy per lesson, detector precision |
+
+## The loop
+
+```
+you push back ──► capture (UserPromptSubmit / Stop) ──► local queue (redacted clause only)
+                                                            │ SessionEnd
+                                                            ▼
+          inject ◄── active/*.md ◄── curate ◄── distill (Haiku: match existing or propose new)
+   (SessionStart)                  promote at 2 sessions · merge · retire · cap
+          │
+          └── events/<host>.jsonl ──► hs report (did repeats drop after activation?)
+```
+
+## Editing lessons
+
+Lessons are plain Markdown in each store's `lessons/` folder. Edit the text, change `status:`
+(candidate → active → retired/dismissed), or delete a section. The next curate run:
+- marks hand-edited lessons `pinned`, so they are never rewritten, merged away or auto-retired;
+- moves sections to the right file when you change `status:`, and records that as your decision;
+- logs deletions.
+
+`hs edit [ID]` opens the right file in `$EDITOR`. Every change is a git commit in the store.
+
+## How efficacy is measured
+
+For each active lesson, hindsight counts pushbacks matched to it per *relevant* session (same repo, same
+language, or any session for global lessons), before and after activation. A lesson with ≥5 injected
+sessions whose rate didn't drop is flagged ⚠ and retired (unless pinned).
+
+Caveat: lessons are created *because* of pushbacks, so "before" rates are biased upward
+(regression to the mean). Trust the trend over many sessions more than any single lesson's number.
 
 ## Where things live
 
@@ -31,12 +62,21 @@ Self-improving memory for Claude Code. It captures the moments where you push ba
 ## CLI (`hs`)
 
 ```
-hs status                 config, stores, which store this repo routes to, queue counts
-hs queue [-n 30] [--json] captured moments
-hs capture "text"         explicit lesson (what /lesson uses)
-hs store list|init|add    e.g. hs store add org --match '*example-corp.com/*' --remote git@…:me/ai-memory.git
-hs doctor                 health check
-hs purge --queue          delete the local queue
+hs status | queue                      what's captured and where it routes
+hs capture "text"                      explicit lesson (what /lesson uses)
+hs distill [--dry-run] [--no-llm]      process the queue now (normally automatic at SessionEnd)
+hs curate [--store S]                  merge / promote / retire / cap now
+hs list [--status all|active|…] [--here]
+hs show ID                             lesson + stats
+hs edit [ID] · hs rm ID                edit in $EDITOR (pins it) · delete permanently
+hs promote|retire|dismiss|restore ID
+hs review [--list]                     triage candidates + auto-promoted lessons
+hs inject [--cwd DIR]                  preview what SessionStart would inject
+hs report [--repo here] [--weeks 8] [--json]
+hs store list|init|add                 e.g. hs store add org --match '*example-corp.com/*' --remote git@…:me/ai-memory.git
+hs sync [STORE]                        secret scan → commit → pull --rebase → push (manual only)
+hs doctor                              health check
+hs purge --queue | --local | --store S
 ```
 
 ## Tests

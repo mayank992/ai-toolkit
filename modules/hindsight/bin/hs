@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """hs — hindsight CLI (self-improving memory for Claude Code).
 
-Step 1 commands: status, queue, capture, store {list,add,init}, doctor, purge.
+Capture: status, queue, capture | Distill/curate: distill, curate | Lessons: list, show, edit, rm,
+promote, retire, dismiss, restore, review | Inject: inject | Measure: report | Ops: store, sync, doctor, purge
 """
 import argparse
 import json
@@ -96,6 +97,243 @@ def cmd_store(a):
             print("%s: %s (%s)" % (s["name"], s["path"], "created " + ", ".join(created) if created else "already set up"))
 
 
+# ---------------- lessons ----------------
+
+def _stores(cfg, name=None):
+    out = [s for s in cfg["stores"] if st.is_initialized(s) and (not name or s["name"] == name)]
+    if name and not out:
+        sys.exit("store %r not found or not initialized" % name)
+    return out
+
+
+def _find(cfg, lid):
+    from lessons_md import load_store
+    lid = lid if lid.startswith("L-") else "L-" + lid
+    for s in _stores(cfg):
+        ls = load_store(s)
+        if lid in ls:
+            return s, ls[lid], ls
+    sys.exit("no lesson %s" % lid)
+
+
+def cmd_list(a):
+    from lessons_md import load_store
+    cfg = load_config()
+    here = repo_info(os.getcwd()) if a.here else None
+    want = {"all": None, "live": ("candidate", "active"), "archived": ("retired", "dismissed")}.get(a.status, (a.status,))
+    n = 0
+    for s in _stores(cfg, a.store):
+        for l in sorted(load_store(s).values(), key=lambda x: (x.status, x.scope, x.created)):
+            if want and l.status not in want:
+                continue
+            if here and l.scope not in ["global", "repo:" + here["repo"]] + ["lang:" + x for x in here["langs"]]:
+                continue
+            n += 1
+            print("%-9s %-9s %-8s %-34s %s%s" % (l.id, l.status, s["name"], l.scope[:34], l.text,
+                                                 "  📌" if l.pinned else ""))
+    if not n:
+        print("no lessons (status=%s)" % a.status)
+
+
+def cmd_show(a):
+    import events as E
+    import stats as S
+    cfg = load_config()
+    s, l, _ = _find(cfg, a.id)
+    print(l.to_md().rstrip())
+    print("- store: %s  (%s)" % (s["name"], os.path.join(s["path"], "lessons")))
+    evs = E.load_all(_stores(cfg))
+    print(json.dumps(S.lesson_stats(evs, [l])[l.id], indent=2))
+
+
+def _editor(path):
+    ed = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
+    import shlex
+    import subprocess
+    subprocess.call(shlex.split(ed) + [path])
+
+
+def cmd_edit(a):
+    from curate import curate
+    from lessons_md import file_for
+    cfg = load_config()
+    if a.id:
+        s, l, _ = _find(cfg, a.id)
+        path = os.path.join(s["path"], "lessons", file_for(l))
+    else:
+        s = _stores(cfg, a.store)[0] if a.store else route_store(cfg, repo_info(os.getcwd())["remote"])
+        path = os.path.join(s["path"], "lessons", "candidates.md")
+    _editor(path)
+    for x in curate(s, cfg, use_llm=False):
+        print(x)
+
+
+def cmd_rm(a):
+    import events as E
+    from curate import refresh_unreviewed, remember_hashes
+    from lessons_md import save_store
+    cfg = load_config()
+    s, l, ls = _find(cfg, a.id)
+    if not a.yes and input("permanently delete %s “%s”? [y/N] " % (l.id, l.text)).lower() != "y":
+        return
+    del ls[l.id]
+    E.emit(s, "delete", lesson=l.id)
+    save_store(s, ls.values())
+    remember_hashes(s, ls.values())
+    refresh_unreviewed(s, ls.values())
+    st.commit(s, "hindsight: delete %s" % l.id)
+    print("deleted %s (git history in %s keeps it; `git -C %s log` to recover)" % (l.id, s["path"], s["path"]))
+
+
+def _set(a, status):
+    from curate import set_status
+    cfg = load_config()
+    s, l, _ = _find(cfg, a.id)
+    set_status(s, l.id, status, reason=getattr(a, "reason", "") or "")
+    print("%s -> %s" % (l.id, status))
+
+
+def cmd_review(a):
+    import events as E
+    import stats as S
+    from curate import refresh_unreviewed, set_status, unreviewed_ids
+    from lessons_md import load_store
+    cfg = load_config()
+    todo = []
+    for s in _stores(cfg, a.store):
+        ls = load_store(s)
+        evs = E.load(s)
+        auto = set(unreviewed_ids(evs, {i for i, l in ls.items() if l.status == "active"}))
+        for l in ls.values():
+            if l.id in auto or l.status == "candidate":
+                todo.append((s, l))
+    if not todo:
+        print("nothing to review")
+        return
+    allevs = E.load_all(_stores(cfg))
+    for s, l in sorted(todo, key=lambda x: (x[1].status != "active", x[1].id)):
+        stt = S.lesson_stats(allevs, [l])[l.id]
+        print("\n[%s] %s  (%s, %s, hits=%d)" % (l.id, l.text, l.status, l.scope, stt["hits"]))
+        if a.list:
+            continue
+        opts = "[k]eep  [d]ismiss  [e]dit  [s]kip  [q]uit" if l.status == "active" else \
+            "[p]romote  [k]eep as candidate  [d]ismiss  [e]dit  [s]kip  [q]uit"
+        ans = input("  %s > " % opts).strip().lower()[:1]
+        if ans == "q":
+            break
+        if ans == "p" and l.status == "candidate":
+            set_status(s, l.id, "active")
+            E.emit(s, "review", lesson=l.id, decision="promote")
+        elif ans == "k":
+            E.emit(s, "review", lesson=l.id, decision="keep")
+        elif ans == "d":
+            reason = input("  reason (helps tune the detector): ").strip() or "not useful"
+            set_status(s, l.id, "dismissed", reason=reason)
+            E.emit(s, "review", lesson=l.id, decision="dismiss", reason=reason)
+        elif ans == "e":
+            new = input("  new text: ").strip()
+            if new:
+                from curate import remember_hashes
+                from lessons_md import save_store
+                ls = load_store(s)
+                ls[l.id].text = new[:160]
+                ls[l.id].pinned = True
+                save_store(s, ls.values())
+                remember_hashes(s, ls.values())
+                E.emit(s, "edit", lesson=l.id)
+                E.emit(s, "review", lesson=l.id, decision="edit")
+                st.commit(s, "hindsight: edit %s" % l.id)
+        refresh_unreviewed(s)
+
+
+def cmd_distill(a):
+    from distill import distill
+    r = distill(dry_run=a.dry_run, use_llm=not a.no_llm, queue_file=a.queue)
+    if a.quiet:
+        return
+    if r.get("skipped"):
+        print(r["skipped"])
+        return
+    print("%s%d moment(s)" % ("[dry-run] " if a.dry_run else "", r["moments"]))
+    for name, d in r["stores"].items():
+        print("store %s:" % name)
+        for n in d.get("new", []):
+            print("  + %s [%s/%s via %s] %s" % (n["id"], n["status"], n["scope"], n["source"], n["text"]))
+        if d.get("hits"):
+            print("  hits: %s" % ", ".join(d["hits"]))
+        if d.get("noise") or d.get("unattributed"):
+            print("  noise=%d unattributed=%d" % (d.get("noise", 0), d.get("unattributed", 0)))
+        for x in d.get("curate", []):
+            print("  curate: %s" % x)
+
+
+def cmd_curate(a):
+    from curate import curate
+    cfg = load_config()
+    for s in _stores(cfg, a.store):
+        acts = curate(s, cfg, use_llm=not a.no_llm, dry_run=a.dry_run)
+        print("%s: %s" % (s["name"], "; ".join(acts) or "no changes"))
+
+
+def cmd_inject(a):
+    from curate import rank_cache_path
+    from inject import render, select
+    cfg = load_config()
+    info = repo_info(a.cwd or os.getcwd())
+    sel = select(cfg, info, st.is_initialized, rank_cache_path())
+    print("repo=%s langs=%s -> %d lesson(s)\n" % (info["repo"] or "-", ",".join(info["langs"]) or "-", len(sel)))
+    print(render(sel) or "(nothing would be injected)")
+
+
+def cmd_report(a):
+    import measure
+    cfg = load_config()
+    repo = repo_info(os.getcwd())["repo"] if a.repo == "here" else a.repo
+    r = measure.build(cfg, a.store, repo, a.weeks)
+    print(json.dumps(r, indent=2, default=list) if a.json else measure.render(r))
+
+
+def cmd_sync(a):
+    import subprocess
+    from redact import scan
+    cfg = load_config()
+    rc = 0
+    for s in _stores(cfg, a.store):
+        if not s.get("remote"):
+            print("%s: no remote configured (hs store add … --remote, or set it in %s)" % (s["name"], config_path()))
+            continue
+        bad = []
+        for root, _, files in os.walk(s["path"]):
+            if "/.git" in root:
+                continue
+            for f in files:
+                p = os.path.join(root, f)
+                try:
+                    hits = scan(open(p, errors="ignore").read())
+                except OSError:
+                    continue
+                if hits:
+                    bad.append("%s (%s)" % (os.path.relpath(p, s["path"]), ",".join(hits)))
+        if bad:
+            print("%s: REFUSING to push — possible secrets:\n  %s" % (s["name"], "\n  ".join(bad)))
+            rc = 1
+            continue
+        st.init_store(s)  # ensures remote url is current
+        st.commit(s, "hindsight: sync from %s" % __import__("common").hostname())
+        g = lambda *x: subprocess.run(["git", "-C", s["path"]] + list(x), capture_output=True, text=True)
+        has_remote_branch = g("ls-remote", "--exit-code", "--heads", "origin", "main").returncode == 0
+        if has_remote_branch:
+            r = g("pull", "--rebase", "origin", "main")
+            if r.returncode != 0:
+                print("%s: pull failed — resolve in %s\n%s" % (s["name"], s["path"], r.stderr.strip()))
+                rc = 1
+                continue
+        r = g("push", "-u", "origin", "main")
+        print("%s: %s" % (s["name"], "synced" if r.returncode == 0 else "push failed: " + r.stderr.strip()))
+        rc = rc or r.returncode
+    sys.exit(rc)
+
+
 def cmd_doctor(a):
     ok = True
 
@@ -111,8 +349,18 @@ def cmd_doctor(a):
     check(sum(1 for s in cfg["stores"] if s.get("default")) == 1, "exactly one default store")
     settings = read_json(os.path.expanduser("~/.claude/settings.json"), {})
     cmds = [h.get("command", "") for evs in (settings.get("hooks") or {}).values() for g in evs for h in g.get("hooks", [])]
-    for hook in ("capture_prompt.py", "capture_transcript.py"):
-        check(any(hook in c for c in cmds), "hook %s registered" % hook, "./install.sh")
+    manifest = read_json(os.path.join(MODULE_ROOT, "module.json"), {})
+    for h in manifest.get("hooks", []):
+        hook = os.path.basename(h["script"])
+        check(any(hook in c for c in cmds), "step %d hook %s registered (%s)" % (h["step"], hook, h["event"]),
+              "./install.sh")
+    from lessons_md import load_store
+    for s in _stores(cfg):
+        try:
+            n = len(load_store(s))
+            check(True, "store %s lessons parse (%d)" % (s["name"], n))
+        except Exception as e:  # noqa
+            check(False, "store %s lessons parse: %r" % (s["name"], e))
     bad = 0
     for line in open(queue_path()) if os.path.exists(queue_path()) else []:
         try:
@@ -120,22 +368,38 @@ def cmd_doctor(a):
         except ValueError:
             bad += 1
     check(bad == 0, "queue parses (%d bad lines)" % bad)
+    import shutil
+    check(shutil.which("claude") is not None, "claude CLI on PATH (for distill)", "distill will fall back to rules")
     errs = [l for l in open(log_path())] if os.path.exists(log_path()) else []
-    errs = [l for l in errs if "error" in l][-3:]
-    check(not errs, "no recent hook errors", "see %s" % log_path())
+    errs = [l for l in errs if "error" in l or "exit " in l][-3:]
+    check(not errs, "no recent errors in log", "see %s" % log_path())
     for l in errs:
-        print("       " + l.rstrip())
+        print("       " + l.rstrip()[:200])
     sys.exit(0 if ok else 1)
 
 
 def cmd_purge(a):
-    if not a.queue:
-        sys.exit("specify what to purge: --queue (more options arrive with later steps)")
-    if not a.yes and input("delete %s? [y/N] " % queue_path()).lower() != "y":
-        return
-    if os.path.exists(queue_path()):
-        os.remove(queue_path())
-    print("queue purged")
+    import shutil
+    cfg = load_config()
+    if a.queue:
+        if a.yes or input("delete %s? [y/N] " % queue_path()).lower() == "y":
+            if os.path.exists(queue_path()):
+                os.remove(queue_path())
+            print("queue purged")
+    elif a.local:
+        if a.yes or input("delete all local state in %s? [y/N] " % state_dir()).lower() == "y":
+            shutil.rmtree(state_dir(), ignore_errors=True)
+            print("local state purged")
+    elif a.store:
+        s = next((x for x in cfg["stores"] if x["name"] == a.store), None)
+        if not s:
+            sys.exit("no store %r" % a.store)
+        if input("type the store name to permanently delete %s (remote is untouched): " % s["path"]) != s["name"]:
+            sys.exit("aborted")
+        shutil.rmtree(s["path"], ignore_errors=True)
+        print("deleted %s" % s["path"])
+    else:
+        sys.exit("specify --queue, --local or --store NAME")
 
 
 def main():
@@ -149,6 +413,56 @@ def main():
     c = sub.add_parser("capture", help="explicitly capture a lesson (used by /lesson)")
     c.add_argument("text", nargs="*")
     c.set_defaults(fn=cmd_capture)
+
+    d = sub.add_parser("distill", help="turn queued moments into lessons (runs at SessionEnd)")
+    d.add_argument("--dry-run", action="store_true")
+    d.add_argument("--no-llm", action="store_true", help="rule-based only")
+    d.add_argument("--queue", help="read moments from this file instead (not emptied)")
+    d.add_argument("--quiet", action="store_true")
+    d.set_defaults(fn=cmd_distill)
+    cu = sub.add_parser("curate", help="merge / promote / retire / cap")
+    cu.add_argument("--store")
+    cu.add_argument("--no-llm", action="store_true")
+    cu.add_argument("--dry-run", action="store_true")
+    cu.set_defaults(fn=cmd_curate)
+
+    l = sub.add_parser("list", help="list lessons")
+    l.add_argument("--status", default="live", choices=["live", "all", "candidate", "active", "archived"])
+    l.add_argument("--store")
+    l.add_argument("--here", action="store_true", help="only lessons that apply to the current repo")
+    l.set_defaults(fn=cmd_list)
+    sh = sub.add_parser("show", help="show one lesson with stats")
+    sh.add_argument("id")
+    sh.set_defaults(fn=cmd_show)
+    e = sub.add_parser("edit", help="open lessons in $EDITOR (edited lessons get pinned)")
+    e.add_argument("id", nargs="?")
+    e.add_argument("--store")
+    e.set_defaults(fn=cmd_edit)
+    r = sub.add_parser("rm", help="permanently delete a lesson")
+    r.add_argument("id")
+    r.add_argument("-y", "--yes", action="store_true")
+    r.set_defaults(fn=cmd_rm)
+    for name, status in (("promote", "active"), ("retire", "retired"), ("dismiss", "dismissed"), ("restore", "candidate")):
+        x = sub.add_parser(name, help="set lesson status to %s" % status)
+        x.add_argument("id")
+        if name in ("retire", "dismiss"):
+            x.add_argument("--reason", default="")
+        x.set_defaults(fn=lambda a, _s=status: _set(a, _s))
+    rv = sub.add_parser("review", help="triage candidates and auto-promoted lessons")
+    rv.add_argument("--store")
+    rv.add_argument("--list", action="store_true", help="non-interactive")
+    rv.set_defaults(fn=cmd_review)
+
+    i = sub.add_parser("inject", help="preview what SessionStart would inject here")
+    i.add_argument("--cwd")
+    i.set_defaults(fn=cmd_inject)
+    rp = sub.add_parser("report", help="pushbacks per session over time + lesson efficacy")
+    rp.add_argument("--store")
+    rp.add_argument("--repo", help="repo id, or 'here'")
+    rp.add_argument("--weeks", type=int, default=8)
+    rp.add_argument("--json", action="store_true")
+    rp.set_defaults(fn=cmd_report)
+
     s = sub.add_parser("store", help="manage memory stores")
     s.add_argument("action", choices=["list", "add", "init"])
     s.add_argument("name", nargs="?")
@@ -157,9 +471,14 @@ def main():
     s.add_argument("--match", action="append", help="glob on normalized remote, e.g. '*example-corp.com/*'")
     s.add_argument("--default", action="store_true")
     s.set_defaults(fn=cmd_store)
+    sy = sub.add_parser("sync", help="redaction scan, commit, pull --rebase, push")
+    sy.add_argument("store", nargs="?")
+    sy.set_defaults(fn=cmd_sync)
     sub.add_parser("doctor", help="check installation health").set_defaults(fn=cmd_doctor)
-    pg = sub.add_parser("purge", help="delete local data")
+    pg = sub.add_parser("purge", help="delete data")
     pg.add_argument("--queue", action="store_true")
+    pg.add_argument("--local", action="store_true", help="all machine-local state")
+    pg.add_argument("--store", help="delete a local store checkout")
     pg.add_argument("-y", "--yes", action="store_true")
     pg.set_defaults(fn=cmd_purge)
     a = p.parse_args()
