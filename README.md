@@ -31,3 +31,5 @@ lib/settings_merge.py          # shared settings.json hook merge (tag: /.claude/
 modules/<name>/module.json     # hooks, CLI, slash commands a module registers
 modules/<name>/setup.sh        # optional module bootstrap
 ```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it all fits together.

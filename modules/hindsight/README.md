@@ -79,6 +79,10 @@ hs doctor                              health check
 hs purge --queue | --local | --store S
 ```
 
+## Architecture
+
+See [../../docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md).
+
 ## Tests
 
 ```bash
