@@ -73,15 +73,16 @@ def call(system, payload, model="haiku", timeout=180):
     out = r.stdout
     try:
         wrapper = json.loads(out)
-        if isinstance(wrapper, dict) and "result" in wrapper and isinstance(wrapper["result"], str):
-            if wrapper.get("is_error"):
-                log("llm is_error: %s" % wrapper["result"][:300])
-                return None
-            out = wrapper["result"]
-        elif isinstance(wrapper, dict):
-            return wrapper
     except ValueError:
-        pass
+        wrapper = None
+    if isinstance(wrapper, dict):
+        is_cli_wrapper = "result" in wrapper or wrapper.get("type") == "result"
+        if not is_cli_wrapper:
+            return wrapper  # a bare JSON answer
+        if wrapper.get("is_error") or not isinstance(wrapper.get("result"), str):
+            log("llm error result (%s): %s" % (wrapper.get("subtype", "?"), str(wrapper.get("result", ""))[:300]))
+            return None
+        out = wrapper["result"]
     obj = extract_json(out)
     if obj is None:
         log("llm unparseable output: %s" % out[:300])

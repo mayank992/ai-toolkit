@@ -13,8 +13,8 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 MODULE_ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(MODULE_ROOT, "lib"))
 
-from common import (config_path, load_config, log_path, queue_path, read_json, read_jsonl,  # noqa: E402
-                    repo_info, route_store, save_config, state_dir)
+from common import (config_path, hostname, load_config, log_path, queue_path, read_json,  # noqa: E402
+                    read_jsonl, repo_info, route_store, save_config, state_dir)
 import store as st  # noqa: E402
 
 
@@ -78,6 +78,9 @@ def cmd_store(a):
             sys.exit("usage: hs store add NAME [--match GLOB] [--remote URL] [--path DIR] [--default]")
         if any(s["name"] == a.name for s in cfg["stores"]):
             sys.exit("store %r exists; edit %s" % (a.name, config_path()))
+        if not a.match and not a.default:
+            # A catch-all non-default store would be checked before the default and swallow every repo.
+            sys.exit("a non-default store needs --match GLOB (e.g. --match '*example.com/*'), or pass --default")
         s = {"name": a.name, "path": os.path.expanduser(a.path or "~/.ai-memory/%s" % a.name),
              "remote": a.remote or "", "match": a.match or ["*"], "default": bool(a.default)}
         if a.default:
@@ -303,13 +306,13 @@ def cmd_sync(a):
             print("%s: no remote configured (hs store add … --remote, or set it in %s)" % (s["name"], config_path()))
             continue
         bad = []
-        for root, _, files in os.walk(s["path"]):
-            if "/.git" in root:
-                continue
+        for root, dirs, files in os.walk(s["path"]):
+            dirs[:] = [d for d in dirs if d != ".git"]
             for f in files:
                 p = os.path.join(root, f)
                 try:
-                    hits = scan(open(p, errors="ignore").read())
+                    with open(p, errors="ignore") as fh:
+                        hits = scan(fh.read())
                 except OSError:
                     continue
                 if hits:
@@ -319,7 +322,7 @@ def cmd_sync(a):
             rc = 1
             continue
         st.init_store(s)  # ensures remote url is current
-        st.commit(s, "hindsight: sync from %s" % __import__("common").hostname())
+        st.commit(s, "hindsight: sync from %s" % hostname())
         g = lambda *x: subprocess.run(["git", "-C", s["path"]] + list(x), capture_output=True, text=True)
         has_remote_branch = g("ls-remote", "--exit-code", "--heads", "origin", "main").returncode == 0
         if has_remote_branch:
@@ -347,6 +350,11 @@ def cmd_doctor(a):
     for s in cfg["stores"]:
         check(st.is_initialized(s), "store %s initialized" % s["name"], "hs store init %s" % s["name"])
     check(sum(1 for s in cfg["stores"] if s.get("default")) == 1, "exactly one default store")
+    from common import catch_all_globs
+    for s in cfg["stores"]:
+        if not s.get("default") and catch_all_globs(s):
+            check(False, "store %s: catch-all match %s is ignored (only the default store may match everything)"
+                  % (s["name"], catch_all_globs(s)), "set a specific glob, e.g. '*example.com/*'")
     settings = read_json(os.path.expanduser("~/.claude/settings.json"), {})
     cmds = [h.get("command", "") for evs in (settings.get("hooks") or {}).values() for g in evs for h in g.get("hooks", [])]
     manifest = read_json(os.path.join(MODULE_ROOT, "module.json"), {})

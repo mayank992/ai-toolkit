@@ -3,6 +3,7 @@
 Python 3.9-compatible, stdlib only (hooks may run under /usr/bin/python3 on macOS).
 """
 import contextlib
+import copy
 import fcntl
 import fnmatch
 import hashlib
@@ -30,6 +31,7 @@ DEFAULT_CONFIG = {
     "cap_per_scope": 50,
     "retire_days": 60,
     "inject_budget_lines": 15,
+    "inject_budget_chars": 1500,
     "auto_promote": True,
     "distill_model": "haiku",
 }
@@ -161,7 +163,7 @@ def read_hook_input():
 # ---------- config ----------
 
 def load_config():
-    cfg = dict(DEFAULT_CONFIG)
+    cfg = copy.deepcopy(DEFAULT_CONFIG)
     user = read_json(config_path(), None)
     if isinstance(user, dict):
         cfg.update(user)
@@ -221,21 +223,28 @@ def repo_info(cwd):
 
 # ---------- store routing ----------
 
+def default_store(cfg):
+    """The store flagged `default` (else the first one)."""
+    return next((s for s in cfg["stores"] if s.get("default")), cfg["stores"][0])
+
+
+def catch_all_globs(store):
+    """Globs that match every remote. On a non-default store they would make the default unreachable."""
+    return [p for p in store.get("match", []) if p.strip("*") == ""]
+
+
 def route_store(cfg, remote):
-    """Pick the store whose `match` globs fit the normalized remote; else default."""
-    default = None
-    for s in cfg["stores"]:
-        if s.get("default"):
-            default = s
+    """Pick the first non-default store whose `match` globs fit the normalized remote; else default.
+
+    Catch-all globs ("*") on non-default stores are ignored (`hs doctor` warns about them)."""
     if remote:
         for s in cfg["stores"]:
             if s.get("default"):
-                continue  # check specific stores first
-            if any(fnmatch.fnmatch(remote, pat) for pat in s.get("match", [])):
+                continue
+            pats = [p for p in s.get("match", []) if p not in catch_all_globs(s)]
+            if any(fnmatch.fnmatch(remote, pat) for pat in pats):
                 return s
-        if default and any(fnmatch.fnmatch(remote, p) for p in default.get("match", ["*"])):
-            return default
-    return default or cfg["stores"][0]
+    return default_store(cfg)
 
 
 def short_hash(*parts):

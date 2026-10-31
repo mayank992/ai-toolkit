@@ -58,18 +58,27 @@ def detect(prompt):
     signals = []
     clause_parts = []
     for sent in _sentences(text):
-        sent_hit = False
-        for name, weight, rx in _SIG:
-            if rx.search(sent):
-                if name not in signals:
-                    signals.append(name)
-                    score += weight
-                sent_hit = True
-        neg = sum(1 for rx in _NEG if rx.search(sent))
-        if neg:
-            score -= 1.5 * neg
-            sent_hit = sent_hit and neg == 0
-        if sent_hit:
+        negs = sum(1 for rx in _NEG if rx.search(sent))
+        hits = [(n, w) for n, w, rx in _SIG if rx.search(sent)]
+        # A softener cancels a lead word in the same sentence ("No worries.", "No problem, thanks"):
+        # drop the pair rather than letting the lead word's weight outvote its own softener.
+        for n, w in [h for h in hits if h[0].startswith("lead_")]:
+            if not negs:
+                break
+            hits.remove((n, w))
+            negs -= 1
+        names = {n for n, _ in hits}
+        if "use_x_instead" in names:
+            hits = [h for h in hits if h[0] != "instead"]  # implied by "use X instead"
+        sent_weight = sum(w for _, w in hits)
+        neg = 1.5 * negs
+        for n, w in hits:
+            if n not in signals:
+                signals.append(n)
+                score += w
+        score -= neg
+        # Keep a sentence whose signals outweigh its remaining softeners ("Thanks, but use pnpm instead").
+        if sent_weight > neg:
             clause_parts.append(sent)
     # "instead" is implied by "use X instead"; don't double count.
     if "use_x_instead" in signals and "instead" in signals:

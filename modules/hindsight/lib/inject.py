@@ -58,9 +58,11 @@ def select(cfg, info, initialized, rank_cache_path):
     budget_chars = int(cfg.get("inject_budget_chars", 1500))
     out, used = [], len(HEADER)
     for p in picked:
-        line_len = len(p[1].text) + 14
-        if len(out) >= budget_lines or used + line_len > budget_chars:
+        if len(out) >= budget_lines:
             break
+        line_len = len(p[1].text) + 14
+        if used + line_len > budget_chars:
+            continue  # too long for what is left; a shorter, lower-ranked lesson may still fit
         out.append(p)
         used += line_len
     return out

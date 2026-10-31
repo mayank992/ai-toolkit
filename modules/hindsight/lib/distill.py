@@ -4,19 +4,22 @@ Runs detached from the SessionEnd hook (or `hs distill`). Safe to run concurrent
 a non-blocking lock makes extra runs exit immediately.
 """
 import fcntl
+import json
 import os
 import re
 
 import events as E
 import llm
-from common import (iso, load_config, locked, log, now_ts, queue_path, read_jsonl, state_dir)
-from curate import curate, remember_hashes
+from common import (default_store, iso, load_config, locked, log, now_ts, queue_path, read_jsonl, state_dir)
+from curate import apply_hand_edits, curate, remember_hashes
 from lessons_md import Lesson, jaccard, load_store, save_store, tokens
+from stats import parse_ts
 from store import commit, init_store, is_initialized
 
 MERGE_THRESHOLD = 0.6
 MIN_CONFIDENCE = 0.5
 FOLLOWUP_WINDOW_S = 600
+GLOBAL_ALIASES = ("global", "all", "everywhere", "any", "user", "personal")
 
 SYSTEM = """You turn a developer's corrections of an AI coding assistant into durable lessons.
 
@@ -83,7 +86,6 @@ def _premerge(moments):
             nxt = [n for n in moments[i + 1:] if n.get("session_id") == m.get("session_id")]
             if nxt and nxt[0]["kind"] == "prompt":
                 try:
-                    from stats import parse_ts
                     if parse_ts(nxt[0]["ts"]) - parse_ts(m["ts"]) <= FOLLOWUP_WINDOW_S:
                         nxt[0]["after_rejection"] = m.get("tool")
                         continue
@@ -99,16 +101,19 @@ def _relevant_existing(lessons, repo, langs):
 
 
 def _norm_scope(scope, repo, langs):
-    scope = (scope or "repo").strip()
-    if scope == "repo" or scope.startswith("repo:"):
-        return "repo:" + repo if repo else "global"
+    """Map the LLM's scope onto one we trust. A language scope must be one detected in the repo
+    (it becomes a file name), otherwise the lesson falls back to the repo scope."""
+    repo_scope = "repo:" + repo if repo else "global"
+    scope = (scope if isinstance(scope, str) else "repo").strip().lower()
+    if scope in GLOBAL_ALIASES:
+        return "global"
     if scope.startswith("lang:"):
         lang = scope[5:].strip().lower()
-        return "lang:" + lang if lang else ("repo:" + repo if repo else "global")
-    return "global"
+        return "lang:" + lang if lang in langs else repo_scope
+    return repo_scope
 
 
-def _plan_group(store, moments, lessons, repo, langs, cfg, use_llm):
+def _plan_group(moments, lessons, repo, langs, cfg, use_llm):
     """Return list of decisions: (moment, noise, lesson_id_or_None, new_lesson_or_None, source)."""
     existing = _relevant_existing(lessons, repo, langs)
     res = None
@@ -155,6 +160,34 @@ def _plan_group(store, moments, lessons, repo, langs, cfg, use_llm):
     return decisions
 
 
+def _drop_from_queue(qpath, ids):
+    """Remove `ids` from the queue; keep anything that arrived while distill was running."""
+    with locked(qpath):
+        rest = [m for m in read_jsonl(qpath) if m.get("id") not in ids]
+        tmp = qpath + ".tmp"
+        with open(tmp, "w") as f:
+            for m in rest:
+                f.write(json.dumps(m, sort_keys=True) + "\n")
+        os.replace(tmp, qpath)
+
+
+def _retired_by_user(store, lesson_id):
+    """True when the developer (not curate) made the lesson's last status change to retired/dismissed."""
+    last = None
+    for e in E.load(store):
+        if e.get("lesson") == lesson_id and e["t"] in ("retire", "dismiss", "restore", "promote"):
+            last = e
+    return bool(last) and last["t"] in ("retire", "dismiss") and last.get("by") == "user"
+
+
+def _safe_curate(store, cfg, use_llm):
+    try:
+        return curate(store, cfg, use_llm=use_llm)
+    except Exception as e:  # noqa: BLE001 — curate retries on the next run; distill must finish
+        log("curate %s failed: %r" % (store["name"], e))
+        return ["curate failed: %r" % e]
+
+
 def distill(dry_run=False, use_llm=True, queue_file=None, cfg=None):
     """Process the queue. Returns dict(summary) for display/tests."""
     cfg = cfg or load_config()
@@ -175,27 +208,34 @@ def _distill(cfg, dry_run, use_llm, queue_file):
     moments = sorted(read_jsonl(qpath), key=lambda m: m.get("ts", ""))
     summary = {"moments": len(moments), "stores": {}, "dry_run": dry_run}
     stores = {s["name"]: s for s in cfg["stores"]}
-    processed = set(m["id"] for m in moments)
-    moments = _premerge(moments)
+    default = default_store(cfg)["name"]
     by_store = {}
     for m in moments:
-        by_store.setdefault(m.get("store") if m.get("store") in stores else
-                            next(s["name"] for s in cfg["stores"] if s.get("default")), []).append(m)
+        by_store.setdefault(m.get("store") if m.get("store") in stores else default, []).append(m)
 
-    for sname, ms in by_store.items():
+    for sname, queued in by_store.items():
         store = stores[sname]
         if not is_initialized(store):
             if dry_run:
                 continue
             init_store(store)
+        ms = _premerge(queued)
         lessons = load_store(store)
+        pending = []  # events are written only after the lessons they describe are saved
+
+        def emit(_store, t, **fields):
+            pending.append((t, fields))
         out = summary["stores"].setdefault(sname, {"new": [], "hits": [], "noise": 0, "unattributed": 0, "curate": []})
+        if not dry_run:
+            # Hand edits must be seen against the files as the developer left them, before
+            # distill rewrites them and records new hashes.
+            out["curate"] = apply_hand_edits(store, lessons, emit)
         groups = {}
         for m in ms:
             groups.setdefault(m.get("repo") or "", []).append(m)
         for repo, gms in groups.items():
             langs = sorted({l for m in gms for l in (m.get("langs") or [])})
-            for m, noise, match, new, source in _plan_group(store, gms, lessons, repo, langs, cfg, use_llm):
+            for m, noise, match, new, source in _plan_group(gms, lessons, repo, langs, cfg, use_llm):
                 lid = match
                 if not noise and not lid and new:
                     scope = _norm_scope(new["scope"], repo, langs)
@@ -206,51 +246,55 @@ def _distill(cfg, dry_run, use_llm, queue_file):
                         lid = dup.id
                     else:
                         lid = Lesson.new_id(sname, new["text"], scope)
-                        if lid not in lessons:
+                        old = lessons.get(lid)
+                        if (old and old.status == "retired" and not old.pinned
+                                and not _retired_by_user(store, lid)):
+                            # Curate retired it (unused / ineffective / cap) but the pushback came back.
+                            # It returns as a candidate whose hit count starts over (see stats), so it
+                            # must recur in new sessions before it is injected again.
+                            old.status, old.reason = "candidate", ""
+                            out["new"].append({"id": lid, "text": old.text, "scope": scope, "status": "candidate",
+                                               "source": "revived"})
+                            emit(store, "restore", lesson=lid, by="auto", status="candidate",
+                                 reason="pushback recurred")
+                        elif not old:
                             status = "active" if m["kind"] == "explicit" else "candidate"
                             lessons[lid] = Lesson(lid, new["text"], scope, new["keywords"], new["files"], status)
                             out["new"].append({"id": lid, "text": new["text"], "scope": scope, "status": status,
                                                "source": source})
-                            if not dry_run:
-                                E.emit(store, "create", lesson=lid, scope=scope, status=status,
-                                       source="explicit" if m["kind"] == "explicit" else source)
+                            emit(store, "create", lesson=lid, scope=scope, status=status,
+                                 source="explicit" if m["kind"] == "explicit" else source)
                 if lid and not noise and m["kind"] == "explicit" and lessons[lid].status == "candidate":
                     lessons[lid].status = "active"  # stating it explicitly is a promotion
-                    if not dry_run:
-                        E.emit(store, "promote", lesson=lid, by="explicit")
+                    emit(store, "promote", lesson=lid, by="explicit")
                 if noise:
                     out["noise"] += 1
                 elif lid:
                     out["hits"].append(lid)
                 else:
                     out["unattributed"] += 1
-                if not dry_run:
-                    E.emit(store, "moment", session_id=m.get("session_id", ""), repo=m.get("repo", ""),
-                           langs=m.get("langs") or [], kind=m["kind"], signals=m.get("signals") or [],
-                           tool=m.get("tool", ""), noise=noise, lesson=None if noise else lid,
-                           moment_ts=m.get("ts"))
+                emit(store, "moment", session_id=m.get("session_id", ""), repo=m.get("repo", ""),
+                     langs=m.get("langs") or [], kind=m["kind"], signals=m.get("signals") or [],
+                     tool=m.get("tool", ""), noise=noise, lesson=None if noise else lid,
+                     moment_ts=m.get("ts"))
         if dry_run:
             continue
+        # Order matters for crash safety: if saving fails, no events exist yet and the moments stay
+        # queued for a clean retry. The remaining window (crash between writing events and dropping
+        # the queue) is a few local file writes wide.
         save_store(store, lessons.values())
         remember_hashes(store, lessons.values())
+        for t, fields in pending:
+            E.emit(store, t, **fields)
         commit(store, "hindsight: distill %d moment(s)" % len(ms))
-        out["curate"] = curate(store, cfg, use_llm=use_llm)
-
-    if not dry_run and queue_file is None:
-        # Drop processed moments; keep any that arrived while we were working.
-        with locked(qpath):
-            rest = [m for m in read_jsonl(qpath) if m.get("id") not in processed]
-            tmp = qpath + ".tmp"
-            with open(tmp, "w") as f:
-                import json
-                for m in rest:
-                    f.write(json.dumps(m, sort_keys=True) + "\n")
-            os.replace(tmp, qpath)
+        if queue_file is None:  # drop right after the commit: keeps the double-count window minimal
+            _drop_from_queue(qpath, {m["id"] for m in queued})
+        out["curate"] += _safe_curate(store, cfg, use_llm)
     # Curate stores that had no new moments too (time-based retirement)
     if not dry_run:
         for s in cfg["stores"]:
             if s["name"] not in by_store and is_initialized(s):
-                summary["stores"].setdefault(s["name"], {})["curate"] = curate(s, cfg, use_llm=use_llm)
+                summary["stores"].setdefault(s["name"], {})["curate"] = _safe_curate(s, cfg, use_llm)
     log("distill done: %s" % {k: (v if k != "stores" else {n: {kk: (len(vv) if isinstance(vv, list) else vv)
                                                                   for kk, vv in d.items()} for n, d in v.items()})
                               for k, v in summary.items()})

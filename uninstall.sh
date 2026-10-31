@@ -11,10 +11,11 @@ if [[ -n "$MODULE" ]]; then
 else
   python3 "$REPO/lib/settings_merge.py" remove "$CLAUDE_DIR/settings.json"
 fi
+PREFIX="/.claude/ai-toolkit/modules/"; [[ -n "$MODULE" ]] && PREFIX+="$MODULE/"
 for l in "$HOME"/.local/bin/* "$CLAUDE_DIR"/commands/*; do
   [[ -L "$l" ]] || continue
   t=$(readlink "$l")
-  [[ "$t" == *"/.claude/ai-toolkit/modules/${MODULE}"* ]] && rm "$l" && echo "  unlinked $l"
+  [[ "$t" == *"$PREFIX"* ]] && rm "$l" && echo "  unlinked $l"
 done
 if [[ -z "$MODULE" && -L "$CLAUDE_DIR/ai-toolkit" ]]; then rm "$CLAUDE_DIR/ai-toolkit"; echo "  unlinked $CLAUDE_DIR/ai-toolkit"; fi
 echo "done. Memory stores and ~/.config/ai-toolkit were left untouched."

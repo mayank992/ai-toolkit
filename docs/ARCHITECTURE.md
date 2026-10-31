@@ -144,10 +144,12 @@ Every append takes an `fcntl` lock. The entry id is a short content hash, so if 
 
    Proposals with confidence below 0.5 are dropped.
 4. **Fallback:** if the LLM call fails or its output can't be parsed, rule templates produce lessons such as `Use X instead of Y`, `Don't …` and `Never …`.
-5. A new lesson is first checked against live lessons in the same scope with Jaccard similarity of at least 0.6. If one matches, the moment counts as a hit on that lesson and no new lesson is created.
+5. A new lesson is first checked against live lessons in the same scope with Jaccard similarity of at least 0.6. If one matches, the moment counts as a hit on that lesson and no new lesson is created. If the proposed lesson has the id of a lesson that *curate* retired (unused, ineffective or over the cap), it is revived as a candidate (`restore` event, `by=auto`, `status=candidate`). Its hit count starts over, so it has to recur in new sessions before it is injected again. A lesson you retired or dismissed yourself stays that way.
+   A `lang:` scope is accepted only for a language detected in the repo; anything else falls back to the repo scope. Scopes become file names, so they are also sanitized to a single path component.
 6. Writes a `moment` event for every moment. The event holds the session, repo, kind, signals, noise flag and attributed lesson. **It does not include the clause text.**
-7. Saves the Markdown, commits to the store, and runs curate.
-8. Removes the processed ids from the queue under the queue lock. Moments that arrived while distill was running stay in the queue.
+7. Before changing anything, runs curate's hand-edit detection on the files as loaded, so edits made since the last run are pinned before distill records new hashes.
+8. Saves the Markdown and commits to the store. It then removes that store's moments from the queue under the queue lock; moments that arrived while distill was running stay. This happens *before* curate, so a curate failure can never make the next run count the same moments twice.
+9. Runs curate. A curate failure is logged and retried on the next run.
 
 The headless call is:
 ```
@@ -159,7 +161,7 @@ claude -p --model haiku --output-format json --tools "" --no-session-persistence
 
 ### 4.3 Curate (step 3)
 
-`curate(store)` runs after every distill. You can also run it with `hs curate`. Its passes run in this order:
+`curate(store)` runs after every distill. You can also run it with `hs curate`; `--dry-run` reports the actions without writing events, files or caches. Its passes run in this order:
 
 1. **Hand-edit detection.** The content hash and status of each lesson are compared with `lesson_hashes.json` from the last run.
    - An edited lesson becomes `pinned` (`edit` event).
@@ -195,7 +197,7 @@ Afterwards curate does the following:
    | A `files:` glob matches a file in the repo | +2 |
    | Pinned | +1 |
 
-4. It adds the best-scoring lessons until it reaches **15 lines or 1500 characters**.
+4. It adds the best-scoring lessons until it reaches **15 lines or 1500 characters**. A lesson too long for the remaining characters is skipped, and shorter ones below it can still fit.
 5. It outputs:
    - `hookSpecificOutput.additionalContext`, a "Lessons from past corrections" block with one `- [L-xxxxxx] text` line per lesson;
    - a `systemMessage` the developer sees, e.g. `hindsight: 4 lessons loaded · 1 newly promoted — run hs review`.
@@ -212,7 +214,7 @@ For each lesson:
   - all sessions for `global`;
   - sessions in the same repo for `repo:…`;
   - sessions where the language was detected for `lang:…`.
-- **Before and after activation:** pushbacks matched to the lesson per relevant session, split at the activation time. Activation is a `promote` event, a `create` event with status active, or a `restore` event.
+- **Before and after activation:** pushbacks matched to the lesson per relevant session, split at the activation time. Activation is a `promote` event, a `create` event with status active, or a `restore` back to active. A `restore` to candidate resets the lesson's hit sessions instead.
 - **Repeats while injected:** pushbacks matched to the lesson in sessions where it was injected. This is the direct failure signal.
 - **Prevented:** `max(0, before_rate − after_rate) × after_sessions`.
 - **Flagged ineffective:** the lesson has been injected in at least 5 sessions, `before_rate > 0`, and `after_rate ≥ before_rate`. Curate then retires it.
@@ -297,6 +299,7 @@ flowchart LR
 
 - **Writes** (moments, lessons, session and inject events) go only to the store the current repo routes to. That includes lessons with `global` scope: a global preference learned at work stays in the org store, so org knowledge never leaks into the personal remote.
 - **Reads** (inject) merge every local store. A personal global lesson therefore applies at work too.
+- Only the default store may match everything. A catch-all glob (`*`) on any other store is ignored by routing and flagged by `hs doctor`.
 - **Sync** is manual and per store. `hs sync [store]` runs a secret scan, commits, runs `pull --rebase`, then pushes. If the scanner finds anything, the push is refused.
 
 ## 7. Privacy and security

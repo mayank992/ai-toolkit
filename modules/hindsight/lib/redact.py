@@ -23,9 +23,13 @@ _PATTERNS = [
         r"(\s*[:=]\s*)['\"]?[^\s'\"]{6,}")),
     ("bearer_token", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{20,}")),
     ("email", re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")),
-    # Long opaque blobs (hex / base64) — likely secrets or hashes
+    # Long opaque blobs (hex / base64) — likely secrets or hashes.
     ("long_hex", re.compile(r"\b[0-9a-fA-F]{32,}\b")),
-    ("long_base64", re.compile(r"\b[A-Za-z0-9+/]{40,}={0,2}")),
+    # Without "/": any 40+ run that mixes letters and digits (tokens are often single-case).
+    ("long_base64", re.compile(r"\b(?=[A-Za-z0-9+]*\d)(?=[A-Za-z0-9+]*[A-Za-z])[A-Za-z0-9+]{40,}={0,2}")),
+    # With "/": also require upper AND lower case, so long paths ("frontend/src/components/…") don't match.
+    ("long_base64", re.compile(r"\b(?=[A-Za-z0-9+/]*\d)(?=[A-Za-z0-9+/]*[a-z])(?=[A-Za-z0-9+/]*[A-Z])"
+                               r"[A-Za-z0-9+/]{40,}={0,2}")),
 ]
 
 

@@ -141,15 +141,20 @@ def parse(text, default_status="candidate"):
 
 # ---------- store-level IO ----------
 
+def _safe_name(s, sep):
+    """A single path component: no separators, never "." or ".." (scopes may come from the LLM)."""
+    return re.sub(r"[^A-Za-z0-9._-]+", sep, s).strip("_.") or "_"
+
+
 def scope_file(scope):
     if scope == "global":
         name = "global"
     elif scope.startswith("lang:"):
-        name = "lang-" + scope[5:]
+        name = "lang-" + _safe_name(scope[5:], "_")
     elif scope.startswith("repo:"):
-        name = "repo-" + re.sub(r"[^A-Za-z0-9._-]+", "__", scope[5:]).strip("_")
+        name = "repo-" + _safe_name(scope[5:], "__")
     else:
-        name = re.sub(r"[^A-Za-z0-9._-]+", "_", scope)
+        name = _safe_name(scope, "_")
     return os.path.join("active", name + ".md")
 
 
@@ -221,7 +226,10 @@ def save_store(store, lessons):
         body = head + "".join("\n" + l.to_md() for l in ls)
         p = os.path.join(d, rel)
         os.makedirs(os.path.dirname(p), exist_ok=True)
-        old = open(p).read() if os.path.exists(p) else None
+        old = None
+        if os.path.exists(p):
+            with open(p) as f:
+                old = f.read()
         if old != body:
             with open(p, "w") as f:
                 f.write(body)

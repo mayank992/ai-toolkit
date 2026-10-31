@@ -72,7 +72,11 @@ def lesson_stats(evs, lessons):
         elif t == "restore":
             lid = resolve(e["lesson"])
             if lid in st:
-                st[lid]["activated"] = e["ts"]
+                if e.get("status", "active") == "active":
+                    st[lid]["activated"] = e["ts"]
+                else:
+                    # Back to candidate: it must earn promotion again from new pushbacks.
+                    st[lid]["hit_sessions"] = set()
     out = {}
     for l in lessons:
         s = st[l.id]
