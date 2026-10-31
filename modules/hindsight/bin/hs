@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""hs — hindsight CLI (self-improving memory for Claude Code).
+
+Step 1 commands: status, queue, capture, store {list,add,init}, doctor, purge.
+"""
+import argparse
+import json
+import os
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+MODULE_ROOT = os.path.dirname(HERE)
+sys.path.insert(0, os.path.join(MODULE_ROOT, "lib"))
+
+from common import (config_path, load_config, log_path, queue_path, read_json, read_jsonl,  # noqa: E402
+                    repo_info, route_store, save_config, state_dir)
+import store as st  # noqa: E402
+
+
+def cmd_status(a):
+    cfg = load_config()
+    q = read_jsonl(queue_path())
+    info = repo_info(os.getcwd())
+    print("config:  %s%s" % (config_path(), "" if os.path.exists(config_path()) else "  (missing — using defaults)"))
+    print("state:   %s" % state_dir())
+    print("here:    repo=%s langs=%s -> store=%s" % (
+        info["repo"] or "-", ",".join(info["langs"]) or "-", route_store(cfg, info["remote"])["name"]))
+    print("stores:")
+    for s in cfg["stores"]:
+        print("  %-10s %-38s %s%s" % (s["name"], s["path"].replace(os.path.expanduser("~"), "~"),
+                                      "initialized" if st.is_initialized(s) else "NOT INITIALIZED",
+                                      "  (default)" if s.get("default") else ""))
+    by_kind = {}
+    for r in q:
+        by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + 1
+    print("queue:   %d moment(s) %s" % (len(q), " ".join("%s=%d" % kv for kv in sorted(by_kind.items()))))
+
+
+def cmd_queue(a):
+    q = read_jsonl(queue_path())
+    if a.json:
+        for r in q:
+            print(json.dumps(r))
+        return
+    if not q:
+        print("queue is empty")
+        return
+    for r in q[-a.n:]:
+        extra = r.get("tool") and "tool=%s ext=%s" % (r["tool"], r.get("file_ext") or "-") or \
+            ",".join(r.get("signals", []))
+        print("%s  %-13s %-8s %-32s %s" % (r["ts"], r["kind"], r["store"], (r["repo"] or "-")[:32], extra))
+        if r.get("clause"):
+            print("    “%s”" % r["clause"])
+
+
+def cmd_capture(a):
+    from capture import enqueue
+    text = " ".join(a.text) if a.text else sys.stdin.read()
+    text = text.strip()
+    if not text:
+        sys.exit("nothing to capture")
+    rec = enqueue("explicit", os.environ.get("CLAUDE_SESSION_ID", ""), os.getcwd(), text[:200])
+    if rec:
+        print("captured %s -> store=%s repo=%s\n  “%s”" % (rec["id"], rec["store"], rec["repo"] or "-", rec["clause"]))
+    else:
+        print("already captured")
+
+
+def cmd_store(a):
+    cfg = load_config()
+    if a.action == "list":
+        for s in cfg["stores"]:
+            print(json.dumps(s))
+        return
+    if a.action == "add":
+        if not a.name:
+            sys.exit("usage: hs store add NAME [--match GLOB] [--remote URL] [--path DIR] [--default]")
+        if any(s["name"] == a.name for s in cfg["stores"]):
+            sys.exit("store %r exists; edit %s" % (a.name, config_path()))
+        s = {"name": a.name, "path": os.path.expanduser(a.path or "~/.ai-memory/%s" % a.name),
+             "remote": a.remote or "", "match": a.match or ["*"], "default": bool(a.default)}
+        if a.default:
+            for o in cfg["stores"]:
+                o["default"] = False
+        # specific stores first, default last
+        cfg["stores"].insert(0 if not a.default else len(cfg["stores"]), s)
+        save_config(cfg)
+        print("added store %s; initializing…" % a.name)
+        a.action = "init"
+    if a.action == "init":
+        targets = [s for s in cfg["stores"] if not a.name or s["name"] == a.name]
+        if not targets:
+            sys.exit("no such store %r" % a.name)
+        for s in targets:
+            created = st.init_store(s)
+            print("%s: %s (%s)" % (s["name"], s["path"], "created " + ", ".join(created) if created else "already set up"))
+
+
+def cmd_doctor(a):
+    ok = True
+
+    def check(cond, msg, hint=""):
+        nonlocal ok
+        print(("  ok   " if cond else "  FAIL ") + msg + ("" if cond or not hint else "  -> " + hint))
+        ok = ok and cond
+
+    cfg = load_config()
+    check(os.path.exists(config_path()), "config exists", "run install.sh")
+    for s in cfg["stores"]:
+        check(st.is_initialized(s), "store %s initialized" % s["name"], "hs store init %s" % s["name"])
+    check(sum(1 for s in cfg["stores"] if s.get("default")) == 1, "exactly one default store")
+    settings = read_json(os.path.expanduser("~/.claude/settings.json"), {})
+    cmds = [h.get("command", "") for evs in (settings.get("hooks") or {}).values() for g in evs for h in g.get("hooks", [])]
+    for hook in ("capture_prompt.py", "capture_transcript.py"):
+        check(any(hook in c for c in cmds), "hook %s registered" % hook, "./install.sh")
+    bad = 0
+    for line in open(queue_path()) if os.path.exists(queue_path()) else []:
+        try:
+            json.loads(line)
+        except ValueError:
+            bad += 1
+    check(bad == 0, "queue parses (%d bad lines)" % bad)
+    errs = [l for l in open(log_path())] if os.path.exists(log_path()) else []
+    errs = [l for l in errs if "error" in l][-3:]
+    check(not errs, "no recent hook errors", "see %s" % log_path())
+    for l in errs:
+        print("       " + l.rstrip())
+    sys.exit(0 if ok else 1)
+
+
+def cmd_purge(a):
+    if not a.queue:
+        sys.exit("specify what to purge: --queue (more options arrive with later steps)")
+    if not a.yes and input("delete %s? [y/N] " % queue_path()).lower() != "y":
+        return
+    if os.path.exists(queue_path()):
+        os.remove(queue_path())
+    print("queue purged")
+
+
+def main():
+    p = argparse.ArgumentParser(prog="hs", description="hindsight: learn from pushback")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("status", help="config, stores, queue summary").set_defaults(fn=cmd_status)
+    q = sub.add_parser("queue", help="show captured correction moments")
+    q.add_argument("-n", type=int, default=30)
+    q.add_argument("--json", action="store_true")
+    q.set_defaults(fn=cmd_queue)
+    c = sub.add_parser("capture", help="explicitly capture a lesson (used by /lesson)")
+    c.add_argument("text", nargs="*")
+    c.set_defaults(fn=cmd_capture)
+    s = sub.add_parser("store", help="manage memory stores")
+    s.add_argument("action", choices=["list", "add", "init"])
+    s.add_argument("name", nargs="?")
+    s.add_argument("--path")
+    s.add_argument("--remote")
+    s.add_argument("--match", action="append", help="glob on normalized remote, e.g. '*example-corp.com/*'")
+    s.add_argument("--default", action="store_true")
+    s.set_defaults(fn=cmd_store)
+    sub.add_parser("doctor", help="check installation health").set_defaults(fn=cmd_doctor)
+    pg = sub.add_parser("purge", help="delete local data")
+    pg.add_argument("--queue", action="store_true")
+    pg.add_argument("-y", "--yes", action="store_true")
+    pg.set_defaults(fn=cmd_purge)
+    a = p.parse_args()
+    a.fn(a)
+
+
+if __name__ == "__main__":
+    main()

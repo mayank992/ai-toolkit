@@ -1,0 +1,10 @@
+{
+  "name": "hindsight",
+  "description": "Self-improving memory: learns lessons from developer pushback and measures their impact.",
+  "cli": {"name": "hs", "path": "bin/hs"},
+  "commands": ["commands/lesson.md"],
+  "hooks": [
+    {"step": 1, "event": "UserPromptSubmit", "script": "hooks/capture_prompt.py", "timeout": 5},
+    {"step": 1, "event": "Stop", "script": "hooks/capture_transcript.py", "timeout": 10}
+  ]
+}
