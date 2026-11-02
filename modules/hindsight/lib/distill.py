@@ -13,11 +13,13 @@ import llm
 from common import (default_store, iso, load_config, locked, log, now_ts, queue_path, read_jsonl, state_dir)
 from curate import apply_hand_edits, curate, remember_hashes
 from lessons_md import Lesson, jaccard, load_store, save_store, tokens
+from redact import redact
 from stats import parse_ts
 from store import commit, init_store, is_initialized
 
 MERGE_THRESHOLD = 0.6
 MIN_CONFIDENCE = 0.5
+MAX_WHY = 160
 FOLLOWUP_WINDOW_S = 600
 GLOBAL_ALIASES = ("global", "all", "everywhere", "any", "user", "personal")
 
@@ -26,25 +28,37 @@ SYSTEM = """You turn a developer's corrections of an AI coding assistant into du
 Input: `moments` (corrections captured in one repo) and `existing` lessons for that repo/scope.
 Moment kinds: "prompt" (a correction sentence the developer typed), "rejected_tool" (developer rejected
 an Edit/Write/Bash call; `clause` is their typed reason, may be empty), "explicit" (developer stated a
-lesson directly).
+lesson directly). A moment may carry `context`: what the assistant had just done when the developer
+pushed back — `request` (what it was asked), `actions` (its tool calls), `reply` (what it said last).
+`after_edit` = the assistant had just changed files, so the correction is feedback on that work.
 
 For EVERY moment decide:
-- noise=true if it is not actually correcting the assistant's behaviour (e.g. the developer is
-  describing their own code, asking a question, or correcting a fact unique to this one task).
+- noise=true if it is not actually correcting the assistant's behaviour (e.g. a new request, a
+  question, the developer describing their own code, or a fact unique to this one task).
 - match = id of an existing lesson that this moment repeats (same underlying rule), else null.
 - new = key of a new lesson you propose (several moments may share one key), else null.
-A rejected_tool with an empty clause usually has match=null,new=null,noise=false.
+A rejected_tool with an empty clause and no telling context usually has match=null,new=null,noise=false.
 
-New lessons must be: one imperative sentence <=120 chars; general enough to apply in future sessions
-of this repo; specific enough to act on; contain no secrets, names, emails, file contents or one-off
-task details. Prefer scope "repo"; use "global" only for clearly personal style preferences that
-apply everywhere; use "lang:<language>" for language-specific conventions (languages: see `langs`).
-keywords: 1-5 lowercase words that signal when it applies. files: optional globs (e.g. "package.json").
-confidence: 0..1 that this is a real, reusable preference.
+To propose a lesson, reason like a reviewer doing a post-mortem:
+1. issue: what the assistant concretely did wrong, judged from `context` against the correction.
+2. why: the general cause — the assumption, habit or missing check that led to it, i.e. why the
+   developer cares. Look past the one instance: "used npm" -> "ignored the repo's package manager".
+3. text: the general rule that would have prevented this whole class of mistake, not a patch for
+   this one instance ("Check the lockfile and use the repo's package manager", not "Use pnpm for
+   lodash").
+
+New lessons must be: text = one imperative sentence <=120 chars; general enough to apply in future
+sessions; specific enough to act on. why and issue: one short sentence each, <=120 chars, abstract
+(no code, file contents, secrets, names, emails or one-off task details). Prefer scope "repo"; use
+"global" only for clearly personal style preferences that apply everywhere; use "lang:<language>"
+for language-specific conventions (languages: see `langs`). keywords: 1-5 lowercase words that
+signal when it applies. files: optional globs (e.g. "package.json"). confidence: 0..1 that this is
+a real, reusable preference.
 
 Output ONLY JSON:
 {"moments":[{"id":"...","noise":false,"match":null,"new":"k1"}],
- "lessons":[{"key":"k1","text":"...","scope":"repo","keywords":["..."],"files":[],"confidence":0.9}]}"""
+ "lessons":[{"key":"k1","text":"...","why":"...","issue":"...","scope":"repo","keywords":["..."],
+             "files":[],"confidence":0.9}]}"""
 
 _LEAD = re.compile(r"^\s*(no|nope|nah|wrong|stop|actually|wait)\b[\s,.!:;—-]*", re.I)
 _USE_INSTEAD_OF = re.compile(r"\b(use|prefer|go with|switch to)\s+(.{1,40}?)\s+instead\s+of\s+(.{1,40}?)(?:[.,;!?]|$)", re.I)
@@ -113,6 +127,14 @@ def _norm_scope(scope, repo, langs):
     return repo_scope
 
 
+def _short(v):
+    """One redacted sentence from the LLM, or ""."""
+    if not isinstance(v, str):
+        return ""
+    v = redact(" ".join(v.split()))
+    return v if len(v) <= MAX_WHY else v[: MAX_WHY - 1] + "…"
+
+
 def _plan_group(moments, lessons, repo, langs, cfg, use_llm):
     """Return list of decisions: (moment, noise, lesson_id_or_None, new_lesson_or_None, source)."""
     existing = _relevant_existing(lessons, repo, langs)
@@ -120,8 +142,9 @@ def _plan_group(moments, lessons, repo, langs, cfg, use_llm):
     if use_llm:
         payload = {
             "repo": repo or "(no repo)", "langs": langs,
-            "moments": [{k: m.get(k) for k in ("id", "kind", "clause", "tool", "file_ext", "signals", "after_rejection")
-                         if m.get(k) not in (None, "", [])} for m in moments],
+            "moments": [{k: m.get(k) for k in ("id", "kind", "clause", "tool", "file_ext", "signals", "after_rejection",
+                                               "after_edit", "context")
+                         if m.get(k) not in (None, "", [], False)} for m in moments],
             "existing": [{"id": l.id, "scope": l.scope, "status": l.status, "text": l.text} for l in existing],
         }
         res = llm.call(SYSTEM, payload, model=cfg.get("distill_model", "haiku"))
@@ -131,7 +154,7 @@ def _plan_group(moments, lessons, repo, langs, cfg, use_llm):
         for nl in res.get("lessons") or []:
             if not isinstance(nl, dict) or not isinstance(nl.get("text"), str) or not nl.get("key"):
                 continue
-            text = nl["text"].strip()[:160]
+            text = redact(nl["text"].strip())[:160]
             try:
                 conf = float(nl.get("confidence", 1))
             except (TypeError, ValueError):
@@ -139,6 +162,7 @@ def _plan_group(moments, lessons, repo, langs, cfg, use_llm):
             if not text or conf < MIN_CONFIDENCE:
                 continue
             new_by_key[nl["key"]] = {"text": text, "scope": nl.get("scope"),
+                                     "why": _short(nl.get("why")), "issue": _short(nl.get("issue")),
                                      "keywords": [str(k).lower()[:30] for k in (nl.get("keywords") or [])][:5],
                                      "files": [str(f)[:60] for f in (nl.get("files") or [])][:5]}
         by_id = {d.get("id"): d for d in res["moments"] if isinstance(d, dict)}
@@ -259,7 +283,8 @@ def _distill(cfg, dry_run, use_llm, queue_file):
                                  reason="pushback recurred")
                         elif not old:
                             status = "active" if m["kind"] == "explicit" else "candidate"
-                            lessons[lid] = Lesson(lid, new["text"], scope, new["keywords"], new["files"], status)
+                            lessons[lid] = Lesson(lid, new["text"], scope, new["keywords"], new["files"], status,
+                                                  why=new.get("why", ""), issue=new.get("issue", ""))
                             out["new"].append({"id": lid, "text": new["text"], "scope": scope, "status": status,
                                                "source": source})
                             emit(store, "create", lesson=lid, scope=scope, status=status,

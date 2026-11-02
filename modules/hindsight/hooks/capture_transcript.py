@@ -87,12 +87,20 @@ def main():
         if len(offsets) > 200:  # prune transcripts that no longer exist
             offsets = {k: v for k, v in offsets.items() if os.path.exists(k)}
         write_json_atomic(op, offsets)
+    found = [x for x in found if not x[1] or x[1] in WATCHED_TOOLS]
+    if not found:
+        return
     from capture import enqueue
+    from common import load_config
+    ctx = None
+    if load_config().get("capture_context", True):
+        from context import previous_turn
+        ctx = previous_turn(path)
     for tid, name, ext, fb in found:
-        if name and name not in WATCHED_TOOLS:
-            continue
-        rec = enqueue("rejected_tool", data.get("session_id"), data.get("cwd"), fb,
-                      tool=name or "unknown", file_ext=ext, tool_use_id=tid)
+        extra = {"tool": name or "unknown", "file_ext": ext, "tool_use_id": tid}
+        if ctx:
+            extra["context"] = ctx
+        rec = enqueue("rejected_tool", data.get("session_id"), data.get("cwd"), fb, **extra)
         if rec:
             log("captured rejected_tool %s tool=%s feedback=%s" % (rec["id"], name, bool(fb)))
 

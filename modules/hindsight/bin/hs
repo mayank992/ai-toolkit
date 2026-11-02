@@ -217,6 +217,9 @@ def cmd_review(a):
     for s, l in sorted(todo, key=lambda x: (x[1].status != "active", x[1].id)):
         stt = S.lesson_stats(allevs, [l])[l.id]
         print("\n[%s] %s  (%s, %s, hits=%d)" % (l.id, l.text, l.status, l.scope, stt["hits"]))
+        for label, val in (("why", l.why), ("issue", l.issue)):
+            if val:
+                print("    %-6s %s" % (label + ":", val))
         if a.list:
             continue
         opts = "[k]eep  [d]ismiss  [e]dit  [s]kip  [q]uit" if l.status == "active" else \

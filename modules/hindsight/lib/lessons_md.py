@@ -10,6 +10,8 @@ Each lesson is a section:
     ## L-3f9a1c — Use pnpm, never npm, in this repo
     - scope: repo:github.com/me/web
     - trigger: keywords=npm,install; files=package.json
+    - why: the repo is a pnpm workspace; npm breaks the lockfile   (the reason behind the rule)
+    - issue: ran npm install after adding a dependency            (the mistake that taught it)
     - status: active
     - created: 2026-10-31
     - pinned: true
@@ -38,10 +40,10 @@ HEADERS = {
 
 
 class Lesson(object):
-    FIELDS = ("scope", "trigger", "status", "created", "pinned", "reason", "merged")
+    FIELDS = ("scope", "trigger", "why", "issue", "status", "created", "pinned", "reason", "merged")
 
     def __init__(self, id, text, scope="global", keywords=None, files=None, status="candidate",
-                 created=None, pinned=False, reason="", merged=None, notes=None):
+                 created=None, pinned=False, reason="", merged=None, notes=None, why="", issue=""):
         self.id = id
         self.text = text.strip()
         self.scope = scope
@@ -53,6 +55,8 @@ class Lesson(object):
         self.reason = reason or ""
         self.merged = list(merged or [])
         self.notes = list(notes or [])
+        self.why = why or ""
+        self.issue = issue or ""
 
     @staticmethod
     def new_id(store_name, text, scope):
@@ -68,13 +72,20 @@ class Lesson(object):
 
     def content_hash(self):
         """Hash of human-meaningful content; differs => the developer edited it."""
-        s = "\x1f".join([self.text, self.scope, self.trigger_str(), self.status, "\n".join(self.notes)])
+        parts = [self.text, self.scope, self.trigger_str(), self.status, "\n".join(self.notes)]
+        if self.why or self.issue:  # only when set, so lessons from before these fields keep their hash
+            parts += [self.why, self.issue]
+        s = "\x1f".join(parts)
         return hashlib.sha1(s.encode()).hexdigest()[:12]
 
     def to_md(self):
         lines = ["## %s — %s" % (self.id, self.text), "- scope: %s" % self.scope]
         if self.keywords or self.files:
             lines.append("- trigger: %s" % self.trigger_str())
+        if self.why:
+            lines.append("- why: %s" % self.why)
+        if self.issue:
+            lines.append("- issue: %s" % self.issue)
         lines.append("- status: %s" % self.status)
         lines.append("- created: %s" % self.created)
         if self.pinned:
@@ -89,7 +100,7 @@ class Lesson(object):
     def to_dict(self):
         return {"id": self.id, "text": self.text, "scope": self.scope, "keywords": self.keywords,
                 "files": self.files, "status": self.status, "created": self.created, "pinned": self.pinned,
-                "reason": self.reason, "merged": self.merged}
+                "reason": self.reason, "merged": self.merged, "why": self.why, "issue": self.issue}
 
 
 def _parse_trigger(v):

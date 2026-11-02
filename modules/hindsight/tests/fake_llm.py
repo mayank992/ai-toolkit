@@ -2,7 +2,8 @@
 """Deterministic stand-in for `claude -p` used by tests (HINDSIGHT_LLM_CMD).
 
 Reads {"system", "input"} on stdin. Topic rules:
-  clause mentions pnpm   -> lesson "Use pnpm, never npm, in this repo" (matches existing pnpm lesson)
+  clause mentions pnpm   -> lesson "Use pnpm, never npm, in this repo" (matches existing pnpm lesson);
+                            with `context`, the lesson also gets why/issue
   clause mentions tabs   -> global lesson "Indent with tabs"
   clause mentions NOISE  -> noise
   explicit               -> lesson = clause
@@ -39,6 +40,10 @@ for m in inp["moments"]:
             d["new"] = "pnpm"
             lessons["pnpm"] = {"key": "pnpm", "text": "Use pnpm, never npm, in this repo", "scope": "repo",
                                "keywords": ["npm", "pnpm", "install"], "files": ["package.json"], "confidence": 0.95}
+            if m.get("context"):  # with context the model can say why, not just what
+                lessons["pnpm"].update(why="The repo is a pnpm workspace; npm ignores its lockfile",
+                                       issue="Ran %s right after being asked to add a dependency"
+                                             % m["context"]["actions"][0])
     elif "tabs" in c:
         ex = next((e for e in existing if "tabs" in e["text"].lower()), None)
         if ex:

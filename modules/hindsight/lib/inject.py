@@ -60,7 +60,7 @@ def select(cfg, info, initialized, rank_cache_path):
     for p in picked:
         if len(out) >= budget_lines:
             break
-        line_len = len(p[1].text) + 14
+        line_len = len(_line(p[1]))
         if used + line_len > budget_chars:
             continue  # too long for what is left; a shorter, lower-ranked lesson may still fit
         out.append(p)
@@ -68,7 +68,12 @@ def select(cfg, info, initialized, rank_cache_path):
     return out
 
 
+def _line(l):
+    """One injected line. The reason lets Claude apply the rule to cases the text doesn't name."""
+    return "- [%s] %s%s\n" % (l.id, l.text, " (why: %s)" % l.why if l.why else "")
+
+
 def render(selected):
     if not selected:
         return ""
-    return HEADER + "".join("- [%s] %s\n" % (l.id, l.text) for _, l, _ in selected)
+    return HEADER + "".join(_line(l) for _, l, _ in selected)

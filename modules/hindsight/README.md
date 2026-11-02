@@ -55,6 +55,7 @@ Caveat: lessons are created *because* of pushbacks, so "before" rates are biased
 ## Privacy
 
 - Raw prompts are never stored. For a correction prompt, only the sentences that carried the correction signal are kept (≤200 chars).
+- To learn *why* you pushed back, the local queue also keeps a short summary of the agent turn you corrected: your previous request (≤300 chars), its tool calls (file names, commands cut to 80 chars) and its last reply (≤300 chars). It is redacted, never synced, and deleted after distill; stores keep only the abstract `issue` and `why`. Turn it off with `"capture_context": false` in `~/.config/ai-toolkit/hindsight.json`.
 - Everything is redacted before it is written: API keys and tokens, JWTs, AWS keys, `password=`-style values, emails, URL credentials, and `$HOME` → `~`.
 - For rejected tool uses, only the tool name, file extension and your typed feedback are kept. Never the diff or the command.
 - Hooks no-op when `HINDSIGHT_DISABLE=1`.

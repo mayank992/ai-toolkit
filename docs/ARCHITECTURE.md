@@ -10,7 +10,7 @@ hindsight is self-improving memory for Claude Code. It learns from the moments w
 |---|---|
 | Curated memory, not a dump | Corrections become *candidate* lessons. They only take effect once the same correction shows up in two separate sessions. Near-duplicates are merged. Each scope holds at most 50 active lessons. Lessons that go unused, or don't help, are retired. |
 | The developer can see, edit and delete every lesson | Lessons are plain Markdown in a git repo. Hand edits are detected and respected (the lesson is pinned). `hs` has a command for every lifecycle action. |
-| No secrets or raw prompts stored | Only the sentence that carried the correction is kept (≤200 chars). It is redacted before it is written. Rejected edits keep the tool name and file extension, never the diff. `hs sync` scans for secrets and refuses to push if it finds any. |
+| No secrets or raw prompts stored | Only the sentence that carried the correction is kept (≤200 chars). It is redacted before it is written. Rejected edits keep the tool name and file extension, never the diff. A short redacted summary of the agent turn being corrected stays in the local queue only and is deleted after distill; stores get only the abstract `issue` / `why`. `hs sync` scans for secrets and refuses to push if it finds any. |
 | Local single-developer prototype | Python 3.9 standard library only, plus git and the `claude` CLI. State lives under `~/.claude`, `~/.config` and `~/.local/state`. |
 | Portable, with memory kept apart from code | The code repo is public and contains no data. Memory lives in separate private git repos, and each repo's lessons go to a store chosen from its git remote. |
 
@@ -104,8 +104,8 @@ There are two paths:
 
 | Source | Hook | What is recorded |
 |---|---|---|
-| Typed correction ("no, use pnpm instead of npm") | UserPromptSubmit | the sentences that triggered the detector, the signals that fired, and the repo/store/langs |
-| Rejected tool use | Stop | tool name, file extension, and the typed rejection reason (the text between `the user said:` and `Note:`) |
+| Typed correction ("no, use pnpm instead of npm") | UserPromptSubmit | the sentences that triggered the detector, the signals that fired, the repo/store/langs, `after_edit`, and the agent-turn `context` |
+| Rejected tool use | Stop | tool name, file extension, the typed rejection reason (the text between `the user said:` and `Note:`), and the agent-turn `context` |
 | `/lesson <text>` | CLI `hs capture` | the lesson text, `kind: explicit` |
 
 **Detector** (`detect.py`). Each regex signal has a weight, and a prompt counts as a correction when the total reaches **2.0**. Examples:
@@ -118,6 +118,16 @@ There are two paths:
 Negative patterns are removed before scoring, for example "no problem", "no-op", "don't know", "thanks". Prompts that start with `/` are skipped. In prompts longer than 1500 characters, only the first 500 are scanned.
 
 Each signal is recorded, and step 5 uses this to report how precise each signal is.
+
+**Feedback on an implementation.** Right after the agent edits files, the next prompt is often feedback on that work even without a "no" ("the import is broken now, it should be a named import"). When the previous agent turn used `Edit`, `Write`, `MultiEdit` or `NotebookEdit`, the threshold drops to **1.0**, and three weak signals exist for this: `broken` ("doesn't work", "broke", "still failing", 1.5), `should_be` ("it should…", 1.0) and `missing` ("is missing", 1.0). Distill's LLM marks the follow-ups that are really new requests as noise.
+
+**Agent-turn context** (`context.py`). For every captured moment, the hook reads the last 512 KB of the transcript (about 4 ms on a 2.3 MB transcript). It finds the turn being corrected: the last prompt the developer typed before this one (skipping tool results, task notifications, meta entries and sidechains, and the current prompt if it is already written). It records:
+- `request`: what the agent was asked (≤300 chars);
+- `actions`: its tool calls as `Edit package.json` or `Bash: npm install lodash` (file basenames only, commands ≤80 chars, at most 8);
+- `reply`: the last thing it said (≤300 chars);
+- `edited`: whether it changed files.
+
+All of it is redacted and goes only to the local queue. Set `"capture_context": false` in the config to keep the lower threshold but drop the context.
 
 **Transcript scanning** is incremental. `offsets.json` stores a byte offset per transcript. A partial final line is re-read on the next Stop. The offsets table is pruned once it has more than 200 entries. On a 47 MB transcript, the first scan takes about 0.4 s and later scans take about 0.13 s.
 
@@ -140,7 +150,9 @@ Every append takes an `fcntl` lock. The entry id is a short content hash, so if 
 3. Groups moments by **store**, then by **repo**. For each group it calls Haiku once. The input is the moments plus the existing lessons that apply to this repo or its languages (ID and text only). For each moment, Haiku returns one of:
    - `noise`;
    - `match` = an existing lesson ID;
-   - `new` = a proposed lesson (imperative sentence of at most 120 characters, scope, keywords, file globs, confidence).
+   - `new` = a proposed lesson: `text` (imperative sentence of at most 120 characters), `issue`, `why`, scope, keywords, file globs and confidence.
+
+   The prompt asks Haiku to reason like a post-mortem, using the `context`: first the **issue** (what the agent concretely did wrong), then the **why** (the general cause, meaning the assumption or missing check behind it), then the **rule** that would prevent the whole class of mistake rather than patch one instance. `issue` and `why` are one abstract sentence each (≤160 chars, redacted).
 
    Proposals with confidence below 0.5 are dropped.
 4. **Fallback:** if the LLM call fails or its output can't be parsed, rule templates produce lessons such as `Use X instead of Y`, `Don't …` and `Never …`.
@@ -249,12 +261,16 @@ For each lesson:
 ## L-abc494 — Use pnpm, never npm, in this repo
 - scope: repo:gitlab.example-corp.com/team/web
 - trigger: keywords=npm,install; files=package.json
+- why: the repo is a pnpm workspace; npm ignores its lockfile
+- issue: ran npm install right after being asked to add a dependency
 - status: active
 - created: 2026-10-31
 - pinned: true
 - reason: …              (when retired or dismissed)
 - merged: L-123456       (absorbed lessons)
 ```
+`why` and `issue` are optional and count toward the hand-edit hash only when set, so lessons written before these fields existed don't look edited. Inject appends `(why: …)` to the lesson line, which helps Claude apply the rule to cases the text doesn't name.
+
 IDs are `L-` plus 6 hex characters of a hash of (store, text, scope). Two machines that learn the same lesson produce the same ID, and different lessons don't collide.
 
 ### 5.2 Events
@@ -314,7 +330,7 @@ Defense in depth, applied at each layer:
    - `key=value` / `key: value` secret assignments and bearer tokens;
    - emails and long hex or base64 blobs;
    - `$HOME`, which is replaced with `~`.
-3. **No clause text past the queue.** Stores hold lesson text, which the LLM or the developer writes. They never hold the captured clauses. The queue is emptied after each distill.
+3. **No clause or context past the queue.** Stores hold lesson text, `why` and `issue`, which the LLM or the developer writes. They never hold the captured clauses or the agent-turn context (request, actions, reply). The queue is emptied after each distill.
 4. **The LLM is told** not to put secrets, names, file contents or one-off task details into lessons.
 5. **Pre-push gate.** `hs sync` runs `redact.scan()` over the whole store and refuses to push if anything matches.
 6. **Purge.** `hs purge --queue | --local | --store S` wipes data.

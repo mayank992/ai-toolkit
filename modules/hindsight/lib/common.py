@@ -33,6 +33,7 @@ DEFAULT_CONFIG = {
     "inject_budget_lines": 15,
     "inject_budget_chars": 1500,
     "auto_promote": True,
+    "capture_context": True,
     "distill_model": "haiku",
 }
 

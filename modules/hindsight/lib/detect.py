@@ -1,12 +1,15 @@
 """Correction ("pushback") detector for user prompts.
 
 Score-based: each positive signal adds weight, negative patterns subtract.
-A prompt is a pushback when score >= THRESHOLD. Only the sentences that carried
-a signal are kept (the "clause"), never the full prompt.
+A prompt is a pushback when score >= THRESHOLD. Right after the agent edited files, feedback on
+that implementation is usually the next thing typed, so callers may pass FOLLOWUP_THRESHOLD there
+(distill's LLM still filters noise). Only the sentences that carried a signal are kept (the
+"clause"), never the full prompt.
 """
 import re
 
 THRESHOLD = 2.0
+FOLLOWUP_THRESHOLD = 1.0
 MAX_CLAUSE = 200
 # Corrections are short and come first; long prompts are usually pasted material.
 SCAN_LIMIT_LONG_PROMPT = 500
@@ -30,6 +33,12 @@ SIGNALS = [
     ("no_need", 1.5, r"\bno need (to|for)\b"),
     ("lead_actually", 1.0, r"^\s*actually\b"),
     ("not_x_but_y", 1.0, r"\bnot\b.{1,40}\bbut\b"),
+    # Feedback on an implementation: weak alone, enough right after the agent edited files.
+    ("broken", 1.5, r"\b(doesn'?t|does not|didn'?t|isn'?t|is not|still not|still doesn'?t)\s+"
+                    r"(work|working|compile|build|pass|render|load|run)\b|\b(broke|breaks|broken)\b"
+                    r"|\bstill\s+(fails|failing|broken|wrong|the same)\b"),
+    ("should_be", 1.0, r"\b(it|this|that|these|those)\s+should(n'?t)?\b"),
+    ("missing", 1.0, r"\b(is|are)\s+missing\b"),
 ]
 
 NEGATIVES = [
@@ -49,7 +58,7 @@ def _sentences(text):
     return [s.strip() for s in _SENT_SPLIT.split(text) if s.strip()]
 
 
-def detect(prompt):
+def detect(prompt, threshold=THRESHOLD):
     """Return dict(score, signals, clause) or None if not a pushback."""
     if not prompt or prompt.lstrip().startswith("/"):
         return None
@@ -83,7 +92,7 @@ def detect(prompt):
     # "instead" is implied by "use X instead"; don't double count.
     if "use_x_instead" in signals and "instead" in signals:
         score -= 1.0
-    if score < THRESHOLD or not clause_parts:
+    if score < threshold or not clause_parts:
         return None
     clause = " ".join(clause_parts)
     if len(clause) > MAX_CLAUSE:
