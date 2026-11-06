@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import type { Moment, MomentKind, ProcessedMoment } from "../types";
 import { describe, KIND_LABEL } from "../describe";
-import { ago, stamp } from "../time";
+import { ago, stamp } from "@toolkit/ui";
 import { shortRepo } from "../repo";
-import Icon, { type IconName } from "../Icon";
+import { Icon, type IconName } from "@toolkit/ui";
 
 const KIND_ICON: Record<MomentKind, IconName> = { prompt: "message", rejected_tool: "ban", explicit: "bookmark" };
 
@@ -12,12 +12,11 @@ interface Props {
   processed: ProcessedMoment[];
   fresh: Set<string>;
   distillOn: boolean;
+  view: "inbox" | "processed";
+  onView: (v: "inbox" | "processed") => void;
 }
 
-export default function QueueView({ queue, processed, fresh, distillOn }: Props) {
-  const [view, setView] = useState<"inbox" | "processed">(() =>
-    location.hash === "#queue:processed" ? "processed" : "inbox",
-  );
+export default function QueueView({ queue, processed, fresh, distillOn, view, onView: setView }: Props) {
   return (
     <>
       {!distillOn && (

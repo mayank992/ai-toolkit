@@ -2,7 +2,7 @@
 """hs — hindsight CLI (self-improving memory for Claude Code).
 
 Capture: status, queue, capture | Distill/curate: distill, curate | Lessons: list, show, edit, rm,
-promote, retire, dismiss, restore, review | Inject: inject | Measure: report | Ops: store, sync, doctor, ui, purge
+promote, retire, dismiss, restore, review | Inject: inject | Measure: report | Ops: store, sync, doctor, snapshot, ui, purge
 """
 import argparse
 import json
@@ -403,19 +403,16 @@ def cmd_backfill(a):
 
 
 def cmd_ui(a):
-    from ui_server import DIST, serve
-    if not a.api_only and not os.path.exists(os.path.join(DIST, "index.html")):
-        sys.exit("UI not built. Run: pnpm -C %s install && pnpm -C %s build" % ((os.path.dirname(DIST),) * 2))
-    httpd = serve(a.port)
-    url = "http://127.0.0.1:%d/" % a.port
-    print("hindsight ui: %s (read-only, Ctrl-C to stop)" % (url + "api/snapshot" if a.api_only else url), flush=True)
-    if not a.no_open and not a.api_only:
-        import webbrowser
-        webbrowser.open(url)
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        pass
+    # The dashboard lives at the repo root and mounts every module; hs ui opens it on hindsight.
+    tool = os.path.join(os.path.dirname(os.path.dirname(MODULE_ROOT)), "bin", "ai-toolkit")
+    argv = [tool, "ui", "--module", "hindsight", "--port", str(a.port)]
+    argv += ["--no-open"] * a.no_open + ["--api-only"] * a.api_only
+    os.execv(tool, argv)
+
+
+def cmd_snapshot(a):
+    import snapshot
+    print(snapshot.to_json(snapshot.build(load_config())))
 
 
 def cmd_purge(a):
@@ -519,10 +516,11 @@ def main():
     bf.add_argument("--dry-run", action="store_true")
     bf.add_argument("-v", "--verbose", action="store_true", help="also list moments kept unchanged and why")
     bf.set_defaults(fn=cmd_backfill)
-    u = sub.add_parser("ui", help="open a live, read-only dashboard of the pipeline")
+    sub.add_parser("snapshot", help="print the dashboard snapshot as JSON").set_defaults(fn=cmd_snapshot)
+    u = sub.add_parser("ui", help="open the ai-toolkit dashboard on hindsight (same as: ai-toolkit ui --module hindsight)")
     u.add_argument("--port", type=int, default=7319)
     u.add_argument("--no-open", action="store_true", help="don't open a browser")
-    u.add_argument("--api-only", action="store_true", help="serve only /api/snapshot (for the Vite dev server)")
+    u.add_argument("--api-only", action="store_true", help="serve only /api (for the Vite dev server)")
     u.set_defaults(fn=cmd_ui)
     pg = sub.add_parser("purge", help="delete data")
     pg.add_argument("--queue", action="store_true")

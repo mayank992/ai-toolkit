@@ -1,5 +1,5 @@
 import type { Snapshot } from "../types";
-import { ago } from "../time";
+import { ago } from "@toolkit/ui";
 
 function Tile({ label, value, foot }: { label: string; value: string; foot: React.ReactNode }) {
   return (

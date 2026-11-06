@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""ai-toolkit: commands that span every module.
+
+  ai-toolkit ui [--module NAME] [--port 7319] [--no-open] [--api-only]
+"""
+import argparse
+import os
+import sys
+
+REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, os.path.join(REPO, "lib"))
+
+
+def cmd_ui(a):
+    from dashboard import DIST, discover, serve
+    if not a.api_only and not os.path.exists(os.path.join(DIST, "index.html")):
+        ui = os.path.dirname(DIST)
+        sys.exit("dashboard not built. Run: pnpm -C %s install && pnpm -C %s build" % (ui, ui))
+    if a.module and a.module not in {m["name"] for m in discover()}:
+        sys.exit("module %r has no dashboard (no \"ui\" block in its module.json)" % a.module)
+    httpd = serve(a.port)
+    url = "http://127.0.0.1:%d/" % a.port + ("#%s" % a.module if a.module else "")
+    print("ai-toolkit ui: %s (read-only, Ctrl-C to stop)" % ("http://127.0.0.1:%d/api/modules" % a.port if a.api_only else url),
+          flush=True)
+    if not a.no_open and not a.api_only:
+        import webbrowser
+        webbrowser.open(url)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+def main():
+    p = argparse.ArgumentParser(prog="ai-toolkit", description=__doc__.split("\n")[0])
+    sub = p.add_subparsers(dest="cmd", required=True)
+    u = sub.add_parser("ui", help="open the live, read-only dashboard of every module")
+    u.add_argument("--module", help="open on this module")
+    u.add_argument("--port", type=int, default=7319)
+    u.add_argument("--no-open", action="store_true", help="don't open a browser")
+    u.add_argument("--api-only", action="store_true", help="serve only /api (for the Vite dev server)")
+    u.set_defaults(fn=cmd_ui)
+    a = p.parse_args()
+    a.fn(a)
+
+
+if __name__ == "__main__":
+    main()

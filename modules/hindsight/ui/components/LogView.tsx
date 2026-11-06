@@ -1,4 +1,4 @@
-import Icon from "../Icon";
+import { Icon } from "@toolkit/ui";
 
 const isError = (l: string) => / error|exit \d|failed/.test(l);
 

@@ -14,7 +14,7 @@ hindsight is self-improving memory for Claude Code. It learns from the moments w
 | Local single-developer prototype | Python 3.9 standard library only, plus git and the `claude` CLI. State lives under `~/.claude`, `~/.config` and `~/.local/state`. |
 | Portable, with memory kept apart from code | The code repo is public and contains no data. Memory lives in separate private git repos, and each repo's lessons go to a store chosen from its git remote. |
 
-**Non-goals for the prototype:** sharing lessons across a team, real-time sync, embeddings or vector search, and a UI beyond the CLI.
+**Non-goals for the prototype:** sharing lessons across a team, real-time sync, embeddings or vector search, and any UI that writes (the dashboard is read-only).
 
 ## 2. System context
 
@@ -40,9 +40,13 @@ Claude Code is the host. hindsight never patches it. It integrates only through:
 ai-toolkit/
   install.sh / uninstall.sh   idempotent; add or remove only entries tagged "/.claude/ai-toolkit/"
   lib/settings_merge.py       merges or removes hook entries in settings.json (shared by all modules)
+  lib/dashboard.py            127.0.0.1 server: /api/modules, /api/m/<name>/snapshot (module subprocess), ui/dist
+  bin/ai-toolkit              cross-module CLI: `ai-toolkit ui`
+  ui/                         dashboard shell (Vite + React): frame, nav, theme, polling, @toolkit/ui SDK;
+                              mounts every modules/*/ui/index.tsx (build output in ui/dist, not committed)
   docs/ARCHITECTURE.md        this file
   modules/hindsight/
-    module.json               manifest: hooks (event, script, timeout, step), CLI, commands
+    module.json               manifest: hooks (event, script, timeout, step), CLI, commands, ui
     setup.sh                  writes the default machine config and initializes the stores
     hooks/                    thin entry points; each one catches every error and exits 0
       capture_prompt.py       UserPromptSubmit
@@ -63,9 +67,8 @@ ai-toolkit/
       curate.py               hand-edit detection, merge, consolidate, promote, retire, cap
       inject.py               choose relevant lessons within a budget and render them
       measure.py              report model and ASCII rendering
-      snapshot.py             one read-only JSON view of every stage, for `hs ui`
-      ui_server.py            127.0.0.1 HTTP server: /api/snapshot + the built React app
-    ui/                       Vite + React dashboard (build output in ui/dist, not committed)
+      snapshot.py             one read-only JSON view of every stage (`hs snapshot`)
+    ui/                       hindsight's dashboard view, mounted by the root ui/ shell
     bin/hs                    CLI (argparse); also the background distill entry point
     commands/lesson.md        /lesson slash command → `hs capture`
     tests/                    offline unittest suite, fake LLM, temporary HOME
@@ -76,6 +79,8 @@ ai-toolkit/
 2. Links the CLI into `~/.local/bin` and the commands into `~/.claude/commands`.
 3. Merges the hooks. `--steps N` registers only hooks whose step is ≤ N.
 4. Runs `setup.sh`.
+
+A module can also add a view to the shared dashboard. It adds a `"ui"` block to `module.json` naming a command that prints its snapshot JSON, and a `ui/index.tsx` that default-exports `defineModule({ View, freshKeys })`. Snapshots run in a subprocess per module, so modules never share an interpreter.
 
 `settings.json` is backed up before every write. Uninstall removes only the tagged entries. Future modules (skills, agents, statusline, …) plug in the same way.
 
@@ -368,7 +373,7 @@ The e2e test greps the stores and local state after a full lifecycle to confirm 
 | step4_inject | scope selection, ranking, budget, cross-store reads, the CLI preview, latency |
 | step5_measure | before/after efficacy, ineffective flag leading to retirement, weekly buckets, detector precision |
 | step6_e2e | `install.sh`, then every hook run through the exact command registered in `settings.json` across 9 sessions; then report, privacy grep, sync to a bare remote, secret blocking, and uninstall restoring `settings.json` byte for byte |
-| step10_ui | `hs ui` snapshot: stage health with a capture-only install (waiting, then stalled), the full loop landing lessons and events, each processed moment linked to its lesson, the per-repo injected context, foreign `Host` rejected |
+| step10_ui | dashboard server via `hs ui`: module listing, unknown module 404, hindsight snapshot: stage health with a capture-only install (waiting, then stalled), the full loop landing lessons and events, each processed moment linked to its lesson, the per-repo injected context, foreign `Host` rejected |
 | step11_backfill | dry run writes nothing; false positives dropped, rejected call and the right turn recovered, missing transcripts kept, second run a no-op; refuses while distill holds the run lock |
 
 A manual live run with real Claude and Haiku in a sandbox reproduced the whole loop:

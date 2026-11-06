@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Lesson, LessonEfficacy, LessonStatus, Store } from "../types";
 import { shortScope } from "../repo";
-import Icon from "../Icon";
+import { Icon } from "@toolkit/ui";
 
 const STATUSES: LessonStatus[] = ["active", "candidate", "retired", "dismissed"];
 const STATUS_COLOR: Record<LessonStatus, string> = {

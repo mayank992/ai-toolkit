@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Report } from "../types";
-import Icon from "../Icon";
+import { Icon } from "@toolkit/ui";
 
 const MIN_SESSIONS_FOR_EFFICACY = 5;
 

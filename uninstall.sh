@@ -17,5 +17,6 @@ for l in "$HOME"/.local/bin/* "$CLAUDE_DIR"/commands/*; do
   t=$(readlink "$l")
   [[ "$t" == *"$PREFIX"* ]] && rm "$l" && echo "  unlinked $l"
 done
+if [[ -z "$MODULE" && -L "$HOME/.local/bin/ai-toolkit" ]]; then rm "$HOME/.local/bin/ai-toolkit"; echo "  unlinked $HOME/.local/bin/ai-toolkit"; fi
 if [[ -z "$MODULE" && -L "$CLAUDE_DIR/ai-toolkit" ]]; then rm "$CLAUDE_DIR/ai-toolkit"; echo "  unlinked $CLAUDE_DIR/ai-toolkit"; fi
 echo "done. Memory stores and ~/.config/ai-toolkit were left untouched."

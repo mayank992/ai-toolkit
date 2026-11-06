@@ -78,25 +78,25 @@ hs report [--repo here] [--weeks 8] [--json]
 hs store list|init|add                 e.g. hs store add org --match '*example-corp.com/*' --remote git@…:me/ai-memory.git
 hs sync [STORE]                        secret scan → commit → pull --rebase → push (manual only)
 hs doctor                              health check
-hs ui [--port 7319] [--no-open]        live read-only dashboard in the browser
+hs ui [--port 7319] [--no-open]        open the ai-toolkit dashboard on hindsight
+hs snapshot                            the dashboard's JSON view of every stage
 hs purge --queue | --local | --store S
 ```
 
 ## Dashboard (`hs ui`)
 
-A live, read-only view of the whole pipeline: stage health (capture → queue → distill → curate → store → inject),
+hindsight's view in the shared ai-toolkit dashboard (see the root README). A live, read-only view of the whole pipeline: stage health (capture → queue → distill → curate → store → inject),
 which hooks are registered, and lessons per store with their efficacy. **Queue → Inbox** shows each raw pushback in
 plain words (what you corrected or rejected, and what Claude was working on). **Queue → Processed** shows what each one
 became after distill: a lesson, or noise. **In Claude's context** shows exactly what SessionStart injects for each repo
 you've worked in. Events, the report and `hindsight.log` are there too. It refreshes every 3 seconds and highlights what's new.
 
 ```bash
-pnpm -C modules/hindsight/ui install && pnpm -C modules/hindsight/ui build   # once, needs Node
-hs ui                     # serves http://127.0.0.1:7319 and opens it
+pnpm -C ui install && pnpm -C ui build   # once, from the repo root; needs Node
+hs ui                                    # same as: ai-toolkit ui --module hindsight
 ```
 
-The server binds to 127.0.0.1, rejects requests whose `Host` isn't local, and never writes. For UI work, run
-`hs ui --api-only` and `pnpm -C modules/hindsight/ui dev`; Vite proxies `/api` to it.
+The view's source lives in `modules/hindsight/ui/`; `hs snapshot` prints the JSON it renders.
 
 ## Architecture
 

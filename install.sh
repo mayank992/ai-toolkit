@@ -33,6 +33,8 @@ if [[ -e "$LINK" && ! -L "$LINK" ]]; then
 fi
 ln -sfn "$REPO" "$LINK"
 echo "linked $LINK -> $REPO"
+ln -sfn "$LINK/bin/ai-toolkit" "$BIN_DIR/ai-toolkit"
+echo "cli: $BIN_DIR/ai-toolkit"
 
 modules=()
 if [[ -n "$MODULE" ]]; then modules=("$MODULE"); else
@@ -65,4 +67,5 @@ for m in "${modules[@]}"; do
   # Module-specific setup
   [[ -x "$MDIR/setup.sh" ]] && "$MDIR/setup.sh"
 done
+[[ -f "$REPO/ui/dist/index.html" ]] || echo "dashboard: not built (optional, needs Node): pnpm -C $REPO/ui install && pnpm -C $REPO/ui build"
 echo "done. Restart Claude Code sessions to pick up hook changes."

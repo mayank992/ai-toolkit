@@ -1,7 +1,7 @@
 import type { RepoContext } from "../types";
-import { ago } from "../time";
+import { ago } from "@toolkit/ui";
 import { shortRepo } from "../repo";
-import Icon from "../Icon";
+import { Icon } from "@toolkit/ui";
 
 function parseWhy(rendered: string, id: string): string {
   const line = rendered.split("\n").find((l) => l.includes(`[${id}]`)) ?? "";

@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import type { HsEvent } from "../types";
-import { eventKey } from "../useSnapshot";
-import { ago, stamp } from "../time";
-import Icon from "../Icon";
+import { eventKey } from "../keys";
+import { ago, stamp } from "@toolkit/ui";
+import { Icon } from "@toolkit/ui";
 
 const SHOWN = new Set(["t", "ts", "_store"]);
 const TONE: Record<string, string> = { promote: "good", create: "good", retire: "warn", dismiss: "warn", delete: "bad" };

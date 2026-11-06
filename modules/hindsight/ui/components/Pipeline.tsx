@@ -1,6 +1,6 @@
 import type { Health, Hook, Stage } from "../types";
-import Icon, { type IconName } from "../Icon";
-import { ago } from "../time";
+import { Icon, type IconName } from "@toolkit/ui";
+import { ago } from "@toolkit/ui";
 
 const HEALTH: Record<Health, { label: string; icon: IconName }> = {
   ok: { label: "Healthy", icon: "check" },

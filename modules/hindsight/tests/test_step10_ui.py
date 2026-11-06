@@ -1,4 +1,4 @@
-"""hs ui: the read-only snapshot server that backs the React dashboard."""
+"""hs ui: the shared ai-toolkit dashboard server, serving hindsight's snapshot."""
 import json
 import os
 import socket
@@ -50,10 +50,10 @@ class TestUi(unittest.TestCase):
         self.port = free_port()
         self.server = subprocess.Popen([os.path.join(MOD, "bin", "hs"), "ui", "--api-only", "--port", str(self.port)],
                                        env=self.e._env(), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        self.assertIn("hindsight ui", self.server.stdout.readline())
+        self.assertIn("ai-toolkit ui", self.server.stdout.readline())
 
-    def get(self, host="127.0.0.1"):
-        req = urllib.request.Request("http://127.0.0.1:%d/api/snapshot" % self.port, headers={"Host": host})
+    def get(self, host="127.0.0.1", path="/api/m/hindsight/snapshot"):
+        req = urllib.request.Request("http://127.0.0.1:%d%s" % (self.port, path), headers={"Host": host})
         with urllib.request.urlopen(req, timeout=20) as r:
             return json.loads(r.read())
 
@@ -93,6 +93,14 @@ class TestUi(unittest.TestCase):
         self.assertEqual([l["id"] for l in ctx["lessons"]], [lesson["id"]])
         self.assertIn(lesson["text"], ctx["rendered"])
         self.assertEqual(ctx["last_inject"]["ids"], [lesson["id"]])
+
+    def test_lists_hindsight_and_404s_unknown_modules(self):
+        self.start()
+        mods = self.get(path="/api/modules")
+        self.assertIn("hindsight", [m["name"] for m in mods])
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self.get(path="/api/m/nope/snapshot")
+        self.assertEqual(cm.exception.code, 404)
 
     def test_rejects_foreign_host_header(self):
         self.start()
