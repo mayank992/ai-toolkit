@@ -58,6 +58,10 @@ def _last_log(lines, needle):
     return None
 
 
+def _plural(n, word):
+    return "%d %s%s" % (n, word, "" if n == 1 else "s")
+
+
 def _age_s(ts, now):
     if not ts:
         return None
@@ -83,15 +87,21 @@ def _processed(evs, lessons_by_id):
     return out
 
 
-def _in_context(cfg, evs, queue):
-    """What SessionStart would inject right now for each recently seen repo, and when it last did."""
+def _in_context(cfg, evs, queue, stores):
+    """What SessionStart would inject right now for each repo seen or targeted by a lesson."""
     from curate import rank_cache_path
     from inject import render, select
+    seen = [(m["repo"], m.get("langs") or [], m["ts"]) for m in queue]
+    seen += [(e.get("repo", ""), e.get("langs") or [], e.get("moment_ts") or e["ts"]) for e in evs
+             if e["t"] in ("session", "moment")]
+    seen += [(l["scope"][5:], [], "") for s in stores for l in s["lessons"]
+             if l["status"] == "active" and l["scope"].startswith("repo:")]
     repos = {}
-    for r in [(m["repo"], m.get("langs") or [], m["ts"]) for m in queue] + \
-             [(e.get("repo", ""), e.get("langs") or [], e["ts"]) for e in evs if e["t"] == "session"]:
-        if r[0] and (r[0] not in repos or r[2] > repos[r[0]][1]):
-            repos[r[0]] = (r[1], r[2])
+    for repo, langs, ts in seen:
+        if not repo:
+            continue
+        old_langs, old_ts = repos.get(repo, ([], ""))
+        repos[repo] = (langs or old_langs, max(ts, old_ts))
     last_inject = {}
     for e in evs:
         if e["t"] == "inject":
@@ -101,7 +111,7 @@ def _in_context(cfg, evs, queue):
         remote = "" if repo.startswith("local:") else repo
         sel = select(cfg, {"repo": repo, "root": "", "remote": remote, "langs": langs}, is_initialized,
                      rank_cache_path())
-        out.append({"repo": repo, "langs": langs, "last_seen": seen,
+        out.append({"repo": repo, "langs": langs, "last_seen": seen or None,
                     "lessons": [{"id": l.id, "text": l.text, "scope": l.scope, "store": st} for st, l, _ in sel],
                     "rendered": render(sel), "last_inject": last_inject.get(repo)})
     return out
@@ -151,8 +161,12 @@ def build(cfg):
         "curate": "%d promoted · %d retired" % (sum(1 for e in evs if e["t"] == "promote"),
                                                sum(1 for e in evs if e["t"] == "retire")),
         "store": "%d active · %d candidate" % (counts["active"], counts["candidate"]),
-        "inject": "%d sessions" % len({e.get("session_id") for e in evs if e["t"] == "inject"}),
+        "inject": _plural(len({e.get("session_id") for e in evs if e["t"] == "inject"}), "session"),
     }
+    injected = {e.get("session_id") for e in evs if e["t"] == "inject"}
+    totals = {"injected_sessions": len(injected), "last_inject": last["inject"],
+              "moments": sum(1 for e in evs if e["t"] == "moment"),
+              "noise": sum(1 for e in evs if e["t"] == "moment" and e.get("noise"))}
     stalled = bool(queue) and (_age_s(oldest, now) or 0) > STALL_AFTER_S
 
     stages = []
@@ -174,9 +188,10 @@ def build(cfg):
         "generated_at": iso(now),
         "stages": stages,
         "hooks": hooks,
+        "totals": totals,
         "queue": queue,
         "processed": _processed(evs, lessons_by_id),
-        "in_context": _in_context(cfg, evs, queue),
+        "in_context": _in_context(cfg, evs, queue, stores),
         "stores": stores,
         "events": list(reversed(evs[-MAX_EVENTS:])),
         "report": measure.build(cfg),

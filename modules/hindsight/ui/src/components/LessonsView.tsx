@@ -1,7 +1,15 @@
 import { useMemo, useState } from "react";
 import type { Lesson, LessonEfficacy, LessonStatus, Store } from "../types";
+import { shortScope } from "../repo";
+import Icon from "../Icon";
 
 const STATUSES: LessonStatus[] = ["active", "candidate", "retired", "dismissed"];
+const STATUS_COLOR: Record<LessonStatus, string> = {
+  active: "var(--good)",
+  candidate: "var(--warning)",
+  retired: "var(--off)",
+  dismissed: "var(--line-strong)",
+};
 
 interface Props {
   stores: Store[];
@@ -24,33 +32,58 @@ export default function LessonsView({ stores, efficacy, fresh }: Props) {
 
   return (
     <>
-      <div className="store-cards">
-        {stores.map((s) => (
-          <div key={s.name} className={`card ${store === s.name ? "selected" : ""}`}
-            onClick={() => setStore(store === s.name ? "all" : s.name)}>
-            <b>{s.name}</b> {s.default && <span className="chip">default</span>}
-            {!s.initialized && <span className="chip bad">not initialized</span>}
-            <div className="muted small">{s.path}</div>
-            <div className="small">match {s.match.join(", ") || "none"} · remote {s.remote || "none"}</div>
-            <div className="small">
-              {STATUSES.map((st) => `${s.lessons.filter((l) => l.status === st).length} ${st}`).join(" · ")}
-            </div>
-          </div>
-        ))}
+      <div className="store-filter">
+        {stores.map((s) => {
+          const n = (st: LessonStatus) => s.lessons.filter((l) => l.status === st).length;
+          const total = Math.max(1, s.lessons.length);
+          return (
+            <button key={s.name} className={`card store-card ${store === s.name ? "selected" : ""}`}
+              onClick={() => setStore(store === s.name ? "all" : s.name)} title={s.path}>
+              <div className="row">
+                <Icon name="store" /> <b>{s.name}</b>
+                {s.default && <span className="chip">default</span>}
+                {!s.initialized && <span className="chip bad">not initialized</span>}
+                <span className="spacer" />
+                <span className="muted small">{s.lessons.length} lessons</span>
+              </div>
+              <div className="store-bar">
+                {STATUSES.map((st) => n(st) > 0 && (
+                  <span key={st} style={{ width: `${(n(st) / total) * 100}%`, background: STATUS_COLOR[st] }} />
+                ))}
+              </div>
+              <div className="legend">
+                {STATUSES.filter((st) => n(st) > 0).map((st) => (
+                  <span key={st}><i style={{ background: STATUS_COLOR[st] }} />{n(st)} {st}</span>
+                ))}
+                {!s.lessons.length && <span className="muted">no lessons yet</span>}
+              </div>
+              <div className="small muted" style={{ marginTop: 6 }}>
+                routes {s.match.join(", ") || "nothing"} · {s.remote ? "synced" : "local only"}
+              </div>
+            </button>
+          );
+        })}
       </div>
       <div className="toolbar">
-        {(["all", ...STATUSES] as const).map((s) => (
-          <button key={s} className={s === status ? "active" : ""} onClick={() => setStatus(s)}>
-            {s}
-          </button>
-        ))}
+        <div className="segmented">
+          {(["all", ...STATUSES] as const).map((s) => (
+            <button key={s} className={s === status ? "active" : ""} onClick={() => setStatus(s)}>
+              {s === "all" ? "All" : s[0].toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+        <span className="small muted">Active lessons are injected. Candidates become active once they recur in a second session.</span>
       </div>
       {!lessons.length ? (
-        <p className="muted">No lessons here yet. Lessons appear after distill turns queued moments into candidates.</p>
+        <div className="card empty">
+          <Icon name="bookmark" />
+          <b>No lessons here</b>
+          Lessons appear after distill turns pushbacks into rules.
+        </div>
       ) : (
-        <div className="lessons">
+        <div className="card">
           {lessons.map((l) => (
-            <LessonCard key={`${l.store}/${l.id}`} l={l} e={stats.get(`${l.store}/${l.id}`)}
+            <LessonRow key={`${l.store}/${l.id}`} l={l} e={stats.get(`${l.store}/${l.id}`)}
               fresh={fresh.has(`${l.id}:${l.status}`)} />
           ))}
         </div>
@@ -59,29 +92,36 @@ export default function LessonsView({ stores, efficacy, fresh }: Props) {
   );
 }
 
-function LessonCard({ l, e, fresh }: { l: Lesson; e?: LessonEfficacy; fresh: boolean }) {
+function LessonRow({ l, e, fresh }: { l: Lesson; e?: LessonEfficacy; fresh: boolean }) {
+  const triggers = [...l.keywords, ...l.files];
   return (
-    <div className={`card lesson status-${l.status} ${fresh ? "fresh" : ""}`}>
+    <div className={`lesson ${fresh ? "fresh" : ""}`}>
       <div className="lesson-head">
-        <code>{l.id}</code>
-        <span className={`pill status-${l.status}`}>{l.status}</span>
+        <span className={`chip status-${l.status}`}>{l.status}</span>
         {l.pinned && <span className="chip">pinned</span>}
-        {e?.flagged_ineffective && <span className="chip bad">ineffective</span>}
-        <span className="muted small">{l.scope} · {l.store}/{l.file} · {l.created}</span>
+        {e?.flagged_ineffective && <span className="chip bad"><Icon name="alert" /> ineffective</span>}
+        <span className="small muted" title={l.scope}>applies in <b>{shortScope(l.scope)}</b></span>
+        <span className="spacer" />
+        <span className="id" title={`${l.store}/${l.file}`}>{l.id}</span>
       </div>
       <div className="lesson-text">{l.text}</div>
-      {l.issue && <div className="small"><b>issue</b> {l.issue}</div>}
-      {l.why && <div className="small"><b>why</b> {l.why}</div>}
-      {(l.keywords.length > 0 || l.files.length > 0) && (
-        <div className="small muted">trigger {[...l.keywords, ...l.files].join(", ")}</div>
-      )}
-      {l.reason && <div className="small muted">reason {l.reason}</div>}
-      {e && (
-        <div className="small stats">
-          {e.hits} hit sessions · injected in {e.sessions_injected} · repeats while injected {e.repeats_while_injected}
-          {e.activated && <> · rate {e.before.rate} → {e.after.rate} · prevented {e.prevented}</>}
+      {(l.issue || l.why) && (
+        <div className="why-issue">
+          {l.issue && <div><b>What went wrong</b>{l.issue}</div>}
+          {l.why && <div><b>Why it matters</b>{l.why}</div>}
         </div>
       )}
+      <div className="lesson-foot">
+        {e && (
+          <span className="stat">
+            seen in <b>{e.hits}</b> session{e.hits === 1 ? "" : "s"} · injected in <b>{e.sessions_injected}</b>
+            {e.sessions_injected > 0 && <> · repeated while injected <b>{e.repeats_while_injected}</b></>}
+          </span>
+        )}
+        {triggers.length > 0 && <span className="spacer" />}
+        {triggers.slice(0, 6).map((t) => <span key={t} className="chip">{t}</span>)}
+      </div>
+      {l.reason && <div className="small muted" style={{ marginTop: 6 }}>Reason: {l.reason}</div>}
     </div>
   );
 }

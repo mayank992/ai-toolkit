@@ -149,6 +149,7 @@ export interface Snapshot {
   generated_at: string;
   stages: Stage[];
   hooks: Hook[];
+  totals: { injected_sessions: number; last_inject: string | null; moments: number; noise: number };
   queue: Moment[];
   processed: ProcessedMoment[];
   in_context: RepoContext[];

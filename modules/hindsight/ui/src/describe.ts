@@ -1,9 +1,9 @@
 import type { Moment, MomentKind } from "./types";
 
 export const KIND_LABEL: Record<MomentKind, string> = {
-  prompt: "you corrected",
-  rejected_tool: "you rejected",
-  explicit: "/lesson",
+  prompt: "Correction",
+  rejected_tool: "Rejected call",
+  explicit: "Saved lesson",
 };
 
 export interface Described {
