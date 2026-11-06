@@ -69,6 +69,11 @@ ai-toolkit/
       measure.py              report model and ASCII rendering
       snapshot.py             one read-only JSON view of every stage (`hs snapshot`)
     ui/                       hindsight's dashboard view, mounted by the root ui/ shell
+  modules/setup/              ai-setup: inventory, export and apply of AI tool config (see its README)
+    lib/core.py               tool-agnostic: {{HOME}} templating, secret placeholders, trees, diff, backups
+    lib/claude_code.py        Claude Code adapter: inventory(), render(), plan()
+    lib/ops.py                export / apply / dashboard snapshot over every adapter
+    ui/                       the Setup dashboard view
     bin/hs                    CLI (argparse); also the background distill entry point
     commands/lesson.md        /lesson slash command → `hs capture`
     tests/                    offline unittest suite, fake LLM, temporary HOME

@@ -1,0 +1,11 @@
+{
+  "name": "setup",
+  "description": "See your AI tool setup (settings, hooks, MCP, plugins, skills, memory) and replicate it on another machine.",
+  "cli": {"name": "ai-setup", "path": "bin/ai-setup"},
+  "ui": {
+    "title": "Setup",
+    "tagline": "Your Claude Code setup, its health, and what a new machine would get",
+    "snapshot": ["bin/ai-setup", "snapshot"]
+  },
+  "hooks": []
+}

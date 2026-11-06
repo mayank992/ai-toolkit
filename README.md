@@ -11,6 +11,7 @@ Portable personal AI tooling for Claude Code. Clone it on any machine and run `.
 | Module | What it does |
 |---|---|
 | [`hindsight`](modules/hindsight/README.md) | Self-improving memory. Learns lessons from developer pushback, injects the relevant ones, and measures whether they reduce repeat corrections. |
+| [`setup`](modules/setup/README.md) | `ai-setup`: see your Claude Code setup (settings, hooks, MCP, plugins, skills, memory) and replicate it on a new machine from a private snapshot repo. |
 
 ## Dashboard
 
