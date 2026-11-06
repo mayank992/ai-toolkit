@@ -91,6 +91,8 @@ class Handler(BaseHTTPRequestHandler):
         rel = os.path.normpath(path.lstrip("/")) if path != "/" else "index.html"
         f = os.path.join(DIST, rel)
         if rel.startswith("..") or not os.path.isfile(f):
+            if rel.startswith("assets" + os.sep):  # a stale page asking for an old build; HTML here would fail silently
+                return self._send(404, b"not in this build; reload the page", "text/plain")
             f = os.path.join(DIST, "index.html")
         with open(f, "rb") as fh:
             body = fh.read()
