@@ -3,6 +3,7 @@ import { useSnapshot } from "./useSnapshot";
 import { ago } from "./time";
 import Icon from "./Icon";
 import { MODULE_UIS } from "./registry";
+import ModuleBoundary from "./ModuleBoundary";
 
 interface ModuleInfo {
   name: string;
@@ -127,7 +128,9 @@ export default function App() {
                 {feed.state === "error" ? <pre className="err">{feed.message}</pre> : null}
               </div>
             ) : (
-              <ui.View snap={snap} fresh={fresh} route={route} navigate={(r) => go(active, r)} />
+              <ModuleBoundary name={info?.title ?? active}>
+                <ui.View snap={snap} fresh={fresh} route={route} navigate={(r) => go(active, r)} />
+              </ModuleBoundary>
             )}
           </section>
         </div>

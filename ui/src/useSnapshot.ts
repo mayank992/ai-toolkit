@@ -12,7 +12,10 @@ export function useSnapshot<S>(
   paused: boolean,
   keysOf?: (snap: S) => Iterable<string>,
 ): Feed<S> {
-  const [feed, setFeed] = useState<Feed<S>>({ state: "loading" });
+  // Each feed value remembers the URL it came from, so a module never renders another module's snapshot
+  // during the render right after switching (before the reset effect below has run).
+  const [tagged, setTagged] = useState<{ url: string | null; feed: Feed<S> }>({ url, feed: { state: "loading" } });
+  const setFeed = (f: Feed<S>) => setTagged({ url, feed: f });
   const seen = useRef<Set<string> | null>(null);
   const last = useRef<S | undefined>(undefined);
   const keysRef = useRef(keysOf);
@@ -33,12 +36,13 @@ export function useSnapshot<S>(
         const res = await fetch(url);
         if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
         const snap: S = await res.json();
+        if (!alive) return;
         const keys = new Set(keysRef.current?.(snap) ?? []);
         const prev = seen.current;
         const fresh = prev ? new Set([...keys].filter((k) => !prev.has(k))) : new Set<string>();
         seen.current = keys;
         last.current = snap;
-        if (alive) setFeed({ state: "ready", snap, fresh });
+        setFeed({ state: "ready", snap, fresh });
       } catch (err) {
         if (alive) setFeed({ state: "error", message: String(err), last: last.current });
       }
@@ -51,5 +55,5 @@ export function useSnapshot<S>(
     };
   }, [url, intervalMs, paused]);
 
-  return feed;
+  return tagged.url === url ? tagged.feed : { state: "loading" };
 }
