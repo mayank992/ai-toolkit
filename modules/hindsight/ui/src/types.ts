@@ -38,6 +38,7 @@ export interface Moment {
   langs?: string[];
   tool?: string;
   file_ext?: string;
+  rejected?: string;
   after_edit?: boolean;
   context?: TurnContext;
 }
@@ -121,11 +122,36 @@ export interface Report {
   dismissed: number;
 }
 
+export interface ProcessedMoment {
+  ts: string;
+  store: string;
+  session_id: string;
+  repo: string;
+  kind: MomentKind;
+  signals: string[];
+  tool: string;
+  noise: boolean;
+  lesson: string | null;
+  lesson_text: string;
+  lesson_status: LessonStatus | "";
+}
+
+export interface RepoContext {
+  repo: string;
+  langs: string[];
+  last_seen: string;
+  lessons: { id: string; text: string; scope: string; store: string }[];
+  rendered: string;
+  last_inject: { ts: string; ids: string[] } | null;
+}
+
 export interface Snapshot {
   generated_at: string;
   stages: Stage[];
   hooks: Hook[];
   queue: Moment[];
+  processed: ProcessedMoment[];
+  in_context: RepoContext[];
   stores: Store[];
   events: HsEvent[];
   report: Report;

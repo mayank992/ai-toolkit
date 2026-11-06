@@ -10,7 +10,7 @@ hindsight is self-improving memory for Claude Code. It learns from the moments w
 |---|---|
 | Curated memory, not a dump | Corrections become *candidate* lessons. They only take effect once the same correction shows up in two separate sessions. Near-duplicates are merged. Each scope holds at most 50 active lessons. Lessons that go unused, or don't help, are retired. |
 | The developer can see, edit and delete every lesson | Lessons are plain Markdown in a git repo. Hand edits are detected and respected (the lesson is pinned). `hs` has a command for every lifecycle action. |
-| No secrets or raw prompts stored | Only the sentence that carried the correction is kept (≤200 chars). It is redacted before it is written. Rejected edits keep the tool name and file extension, never the diff. A short redacted summary of the agent turn being corrected stays in the local queue only and is deleted after distill; stores get only the abstract `issue` / `why`. `hs sync` scans for secrets and refuses to push if it finds any. |
+| No secrets or raw prompts stored | Only the sentence that carried the correction is kept (≤200 chars). It is redacted before it is written. Rejected tool uses keep the tool name, file extension and a one-line summary of the call (file basename or the command cut to 80 chars), never the diff. A short redacted summary of the agent turn being corrected stays in the local queue only and is deleted after distill; stores get only the abstract `issue` / `why`. `hs sync` scans for secrets and refuses to push if it finds any. |
 | Local single-developer prototype | Python 3.9 standard library only, plus git and the `claude` CLI. State lives under `~/.claude`, `~/.config` and `~/.local/state`. |
 | Portable, with memory kept apart from code | The code repo is public and contains no data. Memory lives in separate private git repos, and each repo's lessons go to a store chosen from its git remote. |
 
@@ -108,7 +108,7 @@ There are two paths:
 | Source | Hook | What is recorded |
 |---|---|---|
 | Typed correction ("no, use pnpm instead of npm") | UserPromptSubmit | the sentences that triggered the detector, the signals that fired, the repo/store/langs, `after_edit`, and the agent-turn `context` |
-| Rejected tool use | Stop | tool name, file extension, the typed rejection reason (the text between `the user said:` and `Note:`), and the agent-turn `context` |
+| Rejected tool use | Stop | tool name, file extension, `rejected` (the call itself, e.g. `Bash: pnpm tsc --noEmit` or `Edit App.tsx`), the typed rejection reason (the text between `the user said:` and `Note:`), and the agent-turn `context`. Only `is_error` tool results that *start with* the rejection message count, so output that merely quotes it (reading hindsight's own source) is ignored. |
 | `/lesson <text>` | CLI `hs capture` | the lesson text, `kind: explicit` |
 
 **Detector** (`detect.py`). Each regex signal has a weight, and a prompt counts as a correction when the total reaches **2.0**. Examples:
@@ -124,13 +124,13 @@ Each signal is recorded, and step 5 uses this to report how precise each signal 
 
 **Feedback on an implementation.** Right after the agent edits files, the next prompt is often feedback on that work even without a "no" ("the import is broken now, it should be a named import"). When the previous agent turn used `Edit`, `Write`, `MultiEdit` or `NotebookEdit`, the threshold drops to **1.0**, and three weak signals exist for this: `broken` ("doesn't work", "broke", "still failing", 1.5), `should_be` ("it should…", 1.0) and `missing` ("is missing", 1.0). Distill's LLM marks the follow-ups that are really new requests as noise.
 
-**Agent-turn context** (`context.py`). For every captured moment, the hook reads the last 512 KB of the transcript (about 4 ms on a 2.3 MB transcript). It finds the turn being corrected: the last prompt the developer typed before this one (skipping tool results, task notifications, meta entries and sidechains, and the current prompt if it is already written). It records:
+**Agent-turn context** (`context.py`). For every captured moment, the hook reads the last 512 KB of the transcript (about 4 ms on a 2.3 MB transcript). It finds the turn being corrected: the last prompt the developer typed before this one (skipping tool results, task notifications, `[Request interrupted…]` markers, meta entries and sidechains, and the current prompt if it is already written). It records:
 - `request`: what the agent was asked (≤300 chars);
-- `actions`: its tool calls as `Edit package.json` or `Bash: npm install lodash` (file basenames only, commands ≤80 chars, at most 8);
+- `actions`: its tool calls as `Edit package.json` or `Bash: npm install lodash` (file basenames only, commands ≤80 chars, at most 8; when there are more, the latest are kept, since they are what the developer reacted to);
 - `reply`: the last thing it said (≤300 chars);
 - `edited`: whether it changed files.
 
-All of it is redacted and goes only to the local queue. Set `"capture_context": false` in the config to keep the lower threshold but drop the context.
+All of it is redacted and goes only to the local queue. Set `"capture_context": false` in the config to keep the lower threshold but drop the context and the `rejected` call summary.
 
 **Transcript scanning** is incremental. `offsets.json` stores a byte offset per transcript. A partial final line is re-read on the next Stop. The offsets table is pruned once it has more than 200 entries. On a 47 MB transcript, the first scan takes about 0.4 s and later scans take about 0.13 s.
 
@@ -325,7 +325,7 @@ flowchart LR
 
 Defense in depth, applied at each layer:
 
-1. **Minimize at capture.** Only the sentences that fired the detector are kept, never the full prompt. For rejected tool uses, the tool input (diff or command) is never read into the moment.
+1. **Minimize at capture.** Only the sentences that fired the detector are kept, never the full prompt. For rejected tool uses, the diff is never read; the call is kept only as a one-line summary (file basename or command ≤80 chars), and only while `capture_context` is on.
 2. **Redact before every write** (`redact.py`):
    - API keys: `sk-…`, `gh*_…`, `glpat-…`, `xox…`, `AIza…`;
    - AWS key IDs (`AKIA` / `ASIA`), JWTs and PEM private keys;
@@ -366,7 +366,7 @@ The e2e test greps the stores and local state after a full lifecycle to confirm 
 | step4_inject | scope selection, ranking, budget, cross-store reads, the CLI preview, latency |
 | step5_measure | before/after efficacy, ineffective flag leading to retirement, weekly buckets, detector precision |
 | step6_e2e | `install.sh`, then every hook run through the exact command registered in `settings.json` across 9 sessions; then report, privacy grep, sync to a bare remote, secret blocking, and uninstall restoring `settings.json` byte for byte |
-| step10_ui | `hs ui` snapshot: stage health with a capture-only install (waiting, then stalled), the full loop landing lessons and events, foreign `Host` rejected |
+| step10_ui | `hs ui` snapshot: stage health with a capture-only install (waiting, then stalled), the full loop landing lessons and events, each processed moment linked to its lesson, the per-repo injected context, foreign `Host` rejected |
 
 A manual live run with real Claude and Haiku in a sandbox reproduced the whole loop:
 1. Claude used npm.

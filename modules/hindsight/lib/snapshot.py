@@ -11,6 +11,8 @@ from store import is_initialized
 STALL_AFTER_S = 24 * 3600
 MAX_EVENTS = 300
 MAX_LOG_LINES = 120
+MAX_PROCESSED = 200
+MAX_CONTEXT_REPOS = 6
 
 # Pipeline order and the hook events each stage depends on.
 STAGES = (
@@ -61,6 +63,48 @@ def _age_s(ts, now):
         return None
     from stats import parse_ts
     return now - parse_ts(ts)
+
+
+def _processed(evs, lessons_by_id):
+    """Distilled moments, newest first, each with the lesson it fed (merges followed) or noise."""
+    resolve = E.alias_map(evs)
+    out = []
+    for e in reversed(evs):
+        if e["t"] != "moment":
+            continue
+        lid = resolve(e["lesson"]) if e.get("lesson") else None
+        l = lessons_by_id.get(lid) if lid else None
+        out.append({"ts": e["ts"], "store": e["_store"], "session_id": e.get("session_id", ""),
+                    "repo": e.get("repo", ""), "kind": e.get("kind", ""), "signals": e.get("signals") or [],
+                    "tool": e.get("tool", ""), "noise": bool(e.get("noise")), "lesson": lid,
+                    "lesson_text": l["text"] if l else "", "lesson_status": l["status"] if l else ""})
+        if len(out) >= MAX_PROCESSED:
+            break
+    return out
+
+
+def _in_context(cfg, evs, queue):
+    """What SessionStart would inject right now for each recently seen repo, and when it last did."""
+    from curate import rank_cache_path
+    from inject import render, select
+    repos = {}
+    for r in [(m["repo"], m.get("langs") or [], m["ts"]) for m in queue] + \
+             [(e.get("repo", ""), e.get("langs") or [], e["ts"]) for e in evs if e["t"] == "session"]:
+        if r[0] and (r[0] not in repos or r[2] > repos[r[0]][1]):
+            repos[r[0]] = (r[1], r[2])
+    last_inject = {}
+    for e in evs:
+        if e["t"] == "inject":
+            last_inject[e.get("repo", "")] = {"ts": e["ts"], "ids": e.get("ids") or []}
+    out = []
+    for repo, (langs, seen) in sorted(repos.items(), key=lambda kv: kv[1][1], reverse=True)[:MAX_CONTEXT_REPOS]:
+        remote = "" if repo.startswith("local:") else repo
+        sel = select(cfg, {"repo": repo, "root": "", "remote": remote, "langs": langs}, is_initialized,
+                     rank_cache_path())
+        out.append({"repo": repo, "langs": langs, "last_seen": seen,
+                    "lessons": [{"id": l.id, "text": l.text, "scope": l.scope, "store": st} for st, l, _ in sel],
+                    "rendered": render(sel), "last_inject": last_inject.get(repo)})
+    return out
 
 
 def build(cfg):
@@ -125,11 +169,14 @@ def build(cfg):
         stages.append({"id": sid, "label": label, "health": health, "note": note,
                        "metric": metric[sid], "last_at": last[sid]})
 
+    lessons_by_id = {l["id"]: l for s in stores for l in s["lessons"]}
     return {
         "generated_at": iso(now),
         "stages": stages,
         "hooks": hooks,
         "queue": queue,
+        "processed": _processed(evs, lessons_by_id),
+        "in_context": _in_context(cfg, evs, queue),
         "stores": stores,
         "events": list(reversed(evs[-MAX_EVENTS:])),
         "report": measure.build(cfg),

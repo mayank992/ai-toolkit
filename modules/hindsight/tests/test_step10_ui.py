@@ -78,6 +78,7 @@ class TestUi(unittest.TestCase):
         self.register("UserPromptSubmit", "Stop", "SessionEnd", "SessionStart")
         self.e.session("s1", self.org, ["no, use pnpm instead of npm"])
         self.e.session("s2", self.org, ["no, use pnpm instead of npm"])
+        self.e.session("s3", self.org)
         self.start()
         snap = self.get()
         self.assertEqual(snap["queue"], [])
@@ -85,7 +86,13 @@ class TestUi(unittest.TestCase):
         org = next(s for s in snap["stores"] if s["name"] == "org")
         self.assertEqual([l["status"] for l in org["lessons"]], ["active"])
         self.assertIn("moment", {e["t"] for e in snap["events"]})
-        self.assertEqual(snap["report"]["totals"]["sessions"], 2)
+        self.assertEqual(snap["report"]["totals"]["sessions"], 3)
+        lesson = org["lessons"][0]
+        self.assertEqual({(p["lesson"], p["lesson_text"]) for p in snap["processed"]}, {(lesson["id"], lesson["text"])})
+        ctx = next(r for r in snap["in_context"] if r["repo"] == "gitlab.example-corp.com/team/web")
+        self.assertEqual([l["id"] for l in ctx["lessons"]], [lesson["id"]])
+        self.assertIn(lesson["text"], ctx["rendered"])
+        self.assertEqual(ctx["last_inject"]["ids"], [lesson["id"]])
 
     def test_rejects_foreign_host_header(self):
         self.start()

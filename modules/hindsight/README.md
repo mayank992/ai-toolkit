@@ -57,7 +57,7 @@ Caveat: lessons are created *because* of pushbacks, so "before" rates are biased
 - Raw prompts are never stored. For a correction prompt, only the sentences that carried the correction signal are kept (≤200 chars).
 - To learn *why* you pushed back, the local queue also keeps a short summary of the agent turn you corrected: your previous request (≤300 chars), its tool calls (file names, commands cut to 80 chars) and its last reply (≤300 chars). It is redacted, never synced, and deleted after distill; stores keep only the abstract `issue` and `why`. Turn it off with `"capture_context": false` in `~/.config/ai-toolkit/hindsight.json`.
 - Everything is redacted before it is written: API keys and tokens, JWTs, AWS keys, `password=`-style values, emails, URL credentials, and `$HOME` → `~`.
-- For rejected tool uses, only the tool name, file extension and your typed feedback are kept. Never the diff or the command.
+- For rejected tool uses, the tool name, file extension, a one-line summary of the call (file name, or the command cut to 80 chars) and your typed feedback are kept. Never the diff. `"capture_context": false` drops the call summary too.
 - Hooks no-op when `HINDSIGHT_DISABLE=1`.
 
 ## CLI (`hs`)
@@ -84,8 +84,10 @@ hs purge --queue | --local | --store S
 ## Dashboard (`hs ui`)
 
 A live, read-only view of the whole pipeline: stage health (capture → queue → distill → curate → store → inject),
-which hooks are registered, the queued moments with the agent turn each one corrects, lessons per store with
-their efficacy, the event log, the report and `hindsight.log`. It refreshes every 3 seconds and highlights what's new.
+which hooks are registered, and lessons per store with their efficacy. **Queue → Inbox** shows each raw pushback in
+plain words (what you corrected or rejected, and what Claude was working on). **Queue → Processed** shows what each one
+became after distill: a lesson, or noise. **In Claude's context** shows exactly what SessionStart injects for each repo
+you've worked in. Events, the report and `hindsight.log` are there too. It refreshes every 3 seconds and highlights what's new.
 
 ```bash
 pnpm -C modules/hindsight/ui install && pnpm -C modules/hindsight/ui build   # once, needs Node

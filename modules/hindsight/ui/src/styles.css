@@ -100,5 +100,8 @@ dd { margin: 0; }
 .bar-track { background: var(--bg); height: 12px; border-radius: 4px; overflow: hidden; }
 .bar { background: var(--accent); height: 100%; }
 
-.log { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 12px; overflow-x: auto; }
+.log { white-space: pre-wrap; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 12px; overflow-x: auto; }
 .log .bad { color: var(--bad); }
+
+.explain { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 0 0 10px; }
+.warn-text { color: var(--warn); }
