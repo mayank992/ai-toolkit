@@ -63,6 +63,9 @@ ai-toolkit/
       curate.py               hand-edit detection, merge, consolidate, promote, retire, cap
       inject.py               choose relevant lessons within a budget and render them
       measure.py              report model and ASCII rendering
+      snapshot.py             one read-only JSON view of every stage, for `hs ui`
+      ui_server.py            127.0.0.1 HTTP server: /api/snapshot + the built React app
+    ui/                       Vite + React dashboard (build output in ui/dist, not committed)
     bin/hs                    CLI (argparse); also the background distill entry point
     commands/lesson.md        /lesson slash command → `hs capture`
     tests/                    offline unittest suite, fake LLM, temporary HOME
@@ -350,7 +353,7 @@ The e2e test greps the stores and local state after a full lifecycle to confirm 
 
 ## 9. Testing
 
-`modules/hindsight/tests/run_tests.sh [stepN]` runs 45 tests offline on Python 3.9 and 3.14. Each test gets:
+`modules/hindsight/tests/run_tests.sh [stepN]` runs the tests offline on Python 3.9 and 3.14. Each test gets:
 - a temporary `HOME`, config, state and stores;
 - a fake clock (`HINDSIGHT_NOW`);
 - a fake LLM (`HINDSIGHT_LLM_CMD`, with modes `ok`, `fail` and `garbage`).
@@ -363,6 +366,7 @@ The e2e test greps the stores and local state after a full lifecycle to confirm 
 | step4_inject | scope selection, ranking, budget, cross-store reads, the CLI preview, latency |
 | step5_measure | before/after efficacy, ineffective flag leading to retirement, weekly buckets, detector precision |
 | step6_e2e | `install.sh`, then every hook run through the exact command registered in `settings.json` across 9 sessions; then report, privacy grep, sync to a bare remote, secret blocking, and uninstall restoring `settings.json` byte for byte |
+| step10_ui | `hs ui` snapshot: stage health with a capture-only install (waiting, then stalled), the full loop landing lessons and events, foreign `Host` rejected |
 
 A manual live run with real Claude and Haiku in a sandbox reproduced the whole loop:
 1. Claude used npm.

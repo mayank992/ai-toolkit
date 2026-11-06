@@ -77,8 +77,23 @@ hs report [--repo here] [--weeks 8] [--json]
 hs store list|init|add                 e.g. hs store add org --match '*example-corp.com/*' --remote git@…:me/ai-memory.git
 hs sync [STORE]                        secret scan → commit → pull --rebase → push (manual only)
 hs doctor                              health check
+hs ui [--port 7319] [--no-open]        live read-only dashboard in the browser
 hs purge --queue | --local | --store S
 ```
+
+## Dashboard (`hs ui`)
+
+A live, read-only view of the whole pipeline: stage health (capture → queue → distill → curate → store → inject),
+which hooks are registered, the queued moments with the agent turn each one corrects, lessons per store with
+their efficacy, the event log, the report and `hindsight.log`. It refreshes every 3 seconds and highlights what's new.
+
+```bash
+pnpm -C modules/hindsight/ui install && pnpm -C modules/hindsight/ui build   # once, needs Node
+hs ui                     # serves http://127.0.0.1:7319 and opens it
+```
+
+The server binds to 127.0.0.1, rejects requests whose `Host` isn't local, and never writes. For UI work, run
+`hs ui --api-only` and `pnpm -C modules/hindsight/ui dev`; Vite proxies `/api` to it.
 
 ## Architecture
 
