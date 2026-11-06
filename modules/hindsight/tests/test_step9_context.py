@@ -27,9 +27,9 @@ def text(t):
     return {"type": "text", "text": t}
 
 
-def tool_result(tid, content="ok"):
+def tool_result(tid, content="ok", is_error=False):
     return {"type": "user", "message": {"role": "user", "content": [
-        {"type": "tool_result", "tool_use_id": tid, "content": content}]}}
+        {"type": "tool_result", "tool_use_id": tid, "content": content, "is_error": is_error}]}}
 
 
 def write_transcript(path, entries):
@@ -93,7 +93,20 @@ class TestPreviousTurn(unittest.TestCase):
                          [assistant(tool("Read", file_path="/x/f%d.py" % i)) for i in range(20)])
         ctx = previous_turn(self.path)
         self.assertEqual(len(ctx["actions"]), MAX_ACTIONS)
-        self.assertIn("more", ctx["actions"][-1])
+        self.assertIn("earlier", ctx["actions"][0])
+        self.assertEqual(ctx["actions"][-1], "Read f19.py", "the latest action is what the developer reacted to")
+
+    def test_interrupt_marker_is_not_a_new_turn(self):
+        from context import previous_turn
+        write_transcript(self.path, [
+            user("add a dependency"),
+            assistant(tool("Bash", command="npm install lodash")),
+            tool_result("t-Bash-1", "The user doesn't want to proceed with this tool use.", is_error=True),
+            user([{"type": "text", "text": "[Request interrupted by user for tool use]"}]),
+        ])
+        ctx = previous_turn(self.path)
+        self.assertEqual(ctx["request"], "add a dependency")
+        self.assertEqual(ctx["actions"], ["Bash: npm install lodash"])
 
 
 class TestLessonHashCompat(unittest.TestCase):
@@ -151,12 +164,25 @@ class TestContextCapture(unittest.TestCase):
             user("add lodash"),
             assistant(tool("Bash", command="npm install lodash")),
             tool_result("t-Bash-1", "The user doesn't want to proceed with this tool use. "
-                                    "the user said:\nuse pnpm\n\nNote: ..."),
+                                    "the user said:\nuse pnpm\n\nNote: ...", is_error=True),
         ])
         self.e.hook("capture_transcript.py", {"session_id": "s1", "cwd": self.org, "transcript_path": self.tpath})
         q = self.e.queued()
         self.assertEqual(q[0]["kind"], "rejected_tool")
+        self.assertEqual(q[0]["rejected"], "Bash: npm install lodash")
         self.assertEqual(q[0]["context"]["actions"], ["Bash: npm install lodash"])
+
+    def test_rejected_call_dropped_when_context_off(self):
+        self.e.set_config(capture_context=False)
+        write_transcript(self.tpath, [
+            user("add lodash"),
+            assistant(tool("Bash", command="npm install lodash")),
+            tool_result("t-Bash-1", "The user doesn't want to proceed with this tool use.", is_error=True),
+        ])
+        self.e.hook("capture_transcript.py", {"session_id": "s1", "cwd": self.org, "transcript_path": self.tpath})
+        q = self.e.queued()
+        self.assertEqual(len(q), 1)
+        self.assertNotIn("npm install", open(self.e.queue).read())
 
     def test_distill_records_issue_and_why_and_inject_shows_why(self):
         write_transcript(self.tpath, IMPLEMENTATION)

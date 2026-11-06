@@ -215,9 +215,9 @@ class TestCaptureHooks(unittest.TestCase):
         self.assertEqual([(r["tool"], r["file_ext"]) for r in q], [("Edit", "tsx"), ("Bash", "")])
         self.assertEqual(q[0]["clause"], "keep the old name, contact [REDACTED:email]")
         self.assertEqual(q[1]["clause"], "")
+        self.assertEqual([r["rejected"] for r in q], ["Edit App.tsx", "Bash: rm -rf build"])
         raw = open(self.e.queue).read()
         self.assertNotIn("SECRET_DIFF_CONTENT", raw)
-        self.assertNotIn("rm -rf", raw)
         # Re-run: nothing new.
         self.e.hook("capture_transcript.py", payload)
         self.assertEqual(len(self.e.queued()), 2)
@@ -227,6 +227,16 @@ class TestCaptureHooks(unittest.TestCase):
         q = self.e.queued()
         self.assertEqual(len(q), 3)
         self.assertEqual((q[2]["tool"], q[2]["file_ext"], q[2]["store"]), ("Write", "py", "org"))
+
+    def test_marker_in_successful_output_is_not_a_rejection(self):
+        d = self.e.repo("web", "git@github.com:me/web.git")
+        t = os.path.join(self.e.home, "t.jsonl")
+        ok = {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "u1",
+                                                       "content": 'REJECT = "%s"' % self.REJ, "is_error": False}]}}
+        quoted = self._result("u2", "grep hit: " + self.REJ)
+        self._transcript(t, [self._use("u1", "Bash"), ok, self._use("u2", "Bash"), quoted])
+        self.e.hook("capture_transcript.py", {"session_id": "s", "cwd": d, "transcript_path": t})
+        self.assertEqual(self.e.queued(), [])
 
     def test_partial_last_line_is_retried(self):
         d = self.e.repo("x", "git@github.com:me/x.git")

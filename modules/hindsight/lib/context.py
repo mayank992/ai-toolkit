@@ -16,7 +16,8 @@ MAX_ACTIONS = 8
 MAX_CMD = 80
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 # User-role entries that are not something the developer typed.
-_NOT_TYPED = ("<task-notification>", "<command-", "<local-command", "<system-reminder>", "Caveat:")
+_NOT_TYPED = ("<task-notification>", "<command-", "<local-command", "<system-reminder>", "Caveat:",
+              "[Request interrupted")
 
 
 def _norm(s):
@@ -47,7 +48,7 @@ def _typed_text(entry):
     return text
 
 
-def _action(block):
+def action_summary(block):
     name = block.get("name", "") or "?"
     inp = block.get("input") or {}
     path = inp.get("file_path") or inp.get("notebook_path") or inp.get("path") or ""
@@ -58,11 +59,12 @@ def _action(block):
     return name
 
 
-def _tail_entries(path):
+def load_entries(path, tail_bytes=TAIL_BYTES):
+    """User and assistant entries of a transcript; only the last `tail_bytes` unless it is None."""
     size = os.path.getsize(path)
     with open(path, "rb") as f:
-        if size > TAIL_BYTES:
-            f.seek(size - TAIL_BYTES)
+        if tail_bytes is not None and size > tail_bytes:
+            f.seek(size - tail_bytes)
             f.readline()  # drop the partial first line
         data = f.read()
     out = []
@@ -96,7 +98,7 @@ def _turns(entries):
             if not isinstance(b, dict):
                 continue
             if b.get("type") == "tool_use":
-                turns[-1]["actions"].append(_action(b))
+                turns[-1]["actions"].append(action_summary(b))
             elif b.get("type") == "text" and b.get("text", "").strip():
                 turns[-1]["reply"] = b["text"]  # keep the last thing the agent said
     return turns
@@ -110,7 +112,12 @@ def previous_turn(transcript_path, current_prompt=None):
     """
     if not transcript_path or not os.path.exists(transcript_path):
         return None
-    turns = _turns(_tail_entries(transcript_path))
+    return turn_context(load_entries(transcript_path), current_prompt)
+
+
+def turn_context(entries, current_prompt=None):
+    """Context for the last agent turn in `entries` (see previous_turn), or None."""
+    turns = _turns(entries)
     if current_prompt:
         cur = _norm(current_prompt)
         while turns and _norm(turns[-1]["request"]) == cur:
@@ -120,8 +127,8 @@ def previous_turn(transcript_path, current_prompt=None):
     t = turns[-1]
     actions = t["actions"]
     edited = any(a.split(" ", 1)[0] in EDIT_TOOLS for a in actions)
-    if len(actions) > MAX_ACTIONS:
-        actions = actions[: MAX_ACTIONS - 1] + ["… %d more" % (len(actions) - MAX_ACTIONS + 1)]
+    if len(actions) > MAX_ACTIONS:  # keep the latest: they are what the developer reacted to
+        actions = ["… %d earlier" % (len(actions) - MAX_ACTIONS + 1)] + actions[-(MAX_ACTIONS - 1):]
     return {
         "request": redact(_clip(t["request"], MAX_REQUEST)),
         "actions": [redact(a) for a in actions],

@@ -27,7 +27,7 @@ SYSTEM = """You turn a developer's corrections of an AI coding assistant into du
 
 Input: `moments` (corrections captured in one repo) and `existing` lessons for that repo/scope.
 Moment kinds: "prompt" (a correction sentence the developer typed), "rejected_tool" (developer rejected
-an Edit/Write/Bash call; `clause` is their typed reason, may be empty), "explicit" (developer stated a
+an Edit/Write/Bash call; `rejected` is that call, `clause` their typed reason, may be empty), "explicit" (developer stated a
 lesson directly). A moment may carry `context`: what the assistant had just done when the developer
 pushed back — `request` (what it was asked), `actions` (its tool calls), `reply` (what it said last).
 `after_edit` = the assistant had just changed files, so the correction is feedback on that work.
@@ -142,7 +142,7 @@ def _plan_group(moments, lessons, repo, langs, cfg, use_llm):
     if use_llm:
         payload = {
             "repo": repo or "(no repo)", "langs": langs,
-            "moments": [{k: m.get(k) for k in ("id", "kind", "clause", "tool", "file_ext", "signals", "after_rejection",
+            "moments": [{k: m.get(k) for k in ("id", "kind", "clause", "tool", "rejected", "file_ext", "signals", "after_rejection",
                                                "after_edit", "context")
                          if m.get(k) not in (None, "", [], False)} for m in moments],
             "existing": [{"id": l.id, "scope": l.scope, "status": l.status, "text": l.text} for l in existing],
