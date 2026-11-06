@@ -18,7 +18,11 @@ def cmd_ui(a):
         sys.exit("dashboard not built. Run: pnpm -C %s install && pnpm -C %s build" % (ui, ui))
     if a.module and a.module not in {m["name"] for m in discover()}:
         sys.exit("module %r has no dashboard (no \"ui\" block in its module.json)" % a.module)
-    httpd = serve(a.port)
+    try:
+        httpd = serve(a.port)
+    except OSError as e:
+        sys.exit("can't listen on 127.0.0.1:%d (%s).\nAnother dashboard may be running: lsof -nP -iTCP:%d -sTCP:LISTEN\n"
+                 "or pick another port: ai-toolkit ui --port %d" % (a.port, e.strerror or e, a.port, a.port + 1))
     url = "http://127.0.0.1:%d/" % a.port + ("#%s" % a.module if a.module else "")
     print("ai-toolkit ui: %s (read-only, Ctrl-C to stop)" % ("http://127.0.0.1:%d/api/modules" % a.port if a.api_only else url),
           flush=True)
