@@ -15,6 +15,7 @@ MAX_REPLY = 300
 MAX_ACTIONS = 8
 MAX_CMD = 80
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+REJECT_PREFIX = "The user doesn't want to proceed with this tool use"
 # User-role entries that are not something the developer typed.
 _NOT_TYPED = ("<task-notification>", "<command-", "<local-command", "<system-reminder>", "Caveat:",
               "[Request interrupted")
@@ -29,7 +30,7 @@ def _clip(s, n):
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
-def _typed_text(entry):
+def typed_text(entry):
     """The developer's typed text for a user entry, or None if it isn't a typed prompt."""
     if entry.get("isMeta") or entry.get("isSidechain"):
         return None
@@ -85,7 +86,7 @@ def _turns(entries):
         if e.get("isSidechain"):
             continue
         if e["type"] == "user":
-            text = _typed_text(e)
+            text = typed_text(e)
             if text is not None:
                 turns.append({"request": text, "actions": [], "reply": ""})
             continue

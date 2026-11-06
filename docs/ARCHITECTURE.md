@@ -132,6 +132,8 @@ Each signal is recorded, and step 5 uses this to report how precise each signal 
 
 All of it is redacted and goes only to the local queue. Set `"capture_context": false` in the config to keep the lower threshold but drop the context and the `rejected` call summary.
 
+**Backfill** (`hs backfill`). When capture rules improve, moments already in the queue can be re-derived from their transcripts (`~/.claude/projects/*/<session_id>.jsonl`). Rejections are found by `tool_use_id`; prompts by re-running the detector on each typed prompt and matching the redacted clause. Moments that turn out not to be rejections are dropped; repeats across sessions stay, since they are promotion evidence; moments whose transcript is gone are kept unchanged. It is idempotent and holds distill's run lock, because a distill working from a snapshot would otherwise distill the unrefined moments and then drop the refined ones by id.
+
 **Transcript scanning** is incremental. `offsets.json` stores a byte offset per transcript. A partial final line is re-read on the next Stop. The offsets table is pruned once it has more than 200 entries. On a 47 MB transcript, the first scan takes about 0.4 s and later scans take about 0.13 s.
 
 **Queue entry** (`~/.local/state/hindsight/queue.jsonl`):
@@ -367,6 +369,7 @@ The e2e test greps the stores and local state after a full lifecycle to confirm 
 | step5_measure | before/after efficacy, ineffective flag leading to retirement, weekly buckets, detector precision |
 | step6_e2e | `install.sh`, then every hook run through the exact command registered in `settings.json` across 9 sessions; then report, privacy grep, sync to a bare remote, secret blocking, and uninstall restoring `settings.json` byte for byte |
 | step10_ui | `hs ui` snapshot: stage health with a capture-only install (waiting, then stalled), the full loop landing lessons and events, each processed moment linked to its lesson, the per-repo injected context, foreign `Host` rejected |
+| step11_backfill | dry run writes nothing; false positives dropped, rejected call and the right turn recovered, missing transcripts kept, second run a no-op; refuses while distill holds the run lock |
 
 A manual live run with real Claude and Haiku in a sandbox reproduced the whole loop:
 1. Claude used npm.

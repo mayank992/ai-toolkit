@@ -13,7 +13,6 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib"))
 
-REJECT_PREFIX = "The user doesn't want to proceed with this tool use"
 FEEDBACK_RX = re.compile(r"the user said:\s*(.*?)(?:\n\s*\nNote:|\Z)", re.S | re.I)
 WATCHED_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}
 MAX_FEEDBACK = 200
@@ -29,7 +28,7 @@ def _text(content):
 
 def scan(path, start):
     """Return ([(tool_use_id, tool_name, file_ext, summary, feedback)], new_offset) for rejections after `start`."""
-    from context import action_summary
+    from context import REJECT_PREFIX, action_summary
     tool_uses = {}
     found = []
     with open(path, "rb") as f:

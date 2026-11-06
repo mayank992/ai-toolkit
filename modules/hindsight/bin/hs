@@ -386,6 +386,22 @@ def cmd_doctor(a):
     sys.exit(0 if ok else 1)
 
 
+def cmd_backfill(a):
+    from backfill import Busy, backfill
+    try:
+        plan = backfill(dry_run=a.dry_run)
+    except Busy as e:
+        sys.exit(str(e))
+    counts = {}
+    for before, action, after, reason in plan:
+        counts[action] = counts.get(action, 0) + 1
+        if action in ("drop", "update") or (action == "keep" and a.verbose):
+            label = (after or {}).get("rejected") or before.get("clause") or before.get("tool")
+            print("  %-6s %-13s %s%s" % (action, before["kind"], (label or "")[:70], "  (%s)" % reason if reason else ""))
+    print("%s%d moment(s): %s" % ("[dry-run] " if a.dry_run else "", len(plan),
+                                  ", ".join("%d %s" % (n, k) for k, n in sorted(counts.items())) or "nothing to do"))
+
+
 def cmd_ui(a):
     from ui_server import DIST, serve
     if not a.api_only and not os.path.exists(os.path.join(DIST, "index.html")):
@@ -499,6 +515,10 @@ def main():
     sy.add_argument("store", nargs="?")
     sy.set_defaults(fn=cmd_sync)
     sub.add_parser("doctor", help="check installation health").set_defaults(fn=cmd_doctor)
+    bf = sub.add_parser("backfill", help="re-derive queued moments from their transcripts with current capture rules")
+    bf.add_argument("--dry-run", action="store_true")
+    bf.add_argument("-v", "--verbose", action="store_true", help="also list moments kept unchanged and why")
+    bf.set_defaults(fn=cmd_backfill)
     u = sub.add_parser("ui", help="open a live, read-only dashboard of the pipeline")
     u.add_argument("--port", type=int, default=7319)
     u.add_argument("--no-open", action="store_true", help="don't open a browser")

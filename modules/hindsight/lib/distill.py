@@ -3,6 +3,7 @@
 Runs detached from the SessionEnd hook (or `hs distill`). Safe to run concurrently:
 a non-blocking lock makes extra runs exit immediately.
 """
+import contextlib
 import fcntl
 import json
 import os
@@ -212,19 +213,28 @@ def _safe_curate(store, cfg, use_llm):
         return ["curate failed: %r" % e]
 
 
+@contextlib.contextmanager
+def run_lock():
+    """Held by every run that rewrites the queue from a snapshot of it. Yields False if taken."""
+    with open(os.path.join(state_dir(), "distill.run.lock"), "a") as lock_f:
+        try:
+            fcntl.flock(lock_f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(lock_f, fcntl.LOCK_UN)
+
+
 def distill(dry_run=False, use_llm=True, queue_file=None, cfg=None):
     """Process the queue. Returns dict(summary) for display/tests."""
     cfg = cfg or load_config()
-    lock_f = open(os.path.join(state_dir(), "distill.run.lock"), "a")
-    try:
-        fcntl.flock(lock_f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        return {"skipped": "another distill is running"}
-    try:
+    with run_lock() as got:
+        if not got:
+            return {"skipped": "another distill is running"}
         return _distill(cfg, dry_run, use_llm, queue_file)
-    finally:
-        fcntl.flock(lock_f, fcntl.LOCK_UN)
-        lock_f.close()
 
 
 def _distill(cfg, dry_run, use_llm, queue_file):

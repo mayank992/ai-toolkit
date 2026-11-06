@@ -66,6 +66,7 @@ Caveat: lessons are created *because* of pushbacks, so "before" rates are biased
 hs status | queue                      what's captured and where it routes
 hs capture "text"                      explicit lesson (what /lesson uses)
 hs distill [--dry-run] [--no-llm]      process the queue now (normally automatic at SessionEnd)
+hs backfill [--dry-run] [-v]           re-derive queued moments from their transcripts with current capture rules
 hs curate [--store S]                  merge / promote / retire / cap now
 hs list [--status all|active|…] [--here]
 hs show ID                             lesson + stats
