@@ -1,0 +1,12 @@
+{
+  "name": "rules",
+  "description": "See every rule that shapes Claude Code in a project (instructions, memory, hooks, lessons) and refresh them after each merged MR.",
+  "cli": {"name": "ai-rules", "path": "bin/ai-rules"},
+  "commands": ["commands/mr-retro.md"],
+  "ui": {
+    "title": "Rules",
+    "tagline": "What Claude is told in each project, where it lives, and whether it holds",
+    "snapshot": ["bin/ai-rules", "snapshot"]
+  },
+  "hooks": []
+}
