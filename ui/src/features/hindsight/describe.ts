@@ -32,7 +32,7 @@ export function describe(m: Moment): Described {
     case "prompt":
       return {
         title: m.clause,
-        reason: m.after_edit ? `right after Claude edited files (${lastAction(m) || "edit"})` : lastAction(m) && `after: ${lastAction(m)}`,
+        reason: m.resend ? "added when you sent your request again" : m.after_edit ? `right after Claude edited files (${lastAction(m) || "edit"})` : lastAction(m) && `after: ${lastAction(m)}`,
         reactingTo,
       };
     case "explicit":

@@ -15,14 +15,17 @@ import subprocess
 import sys
 
 from . import events as E
-from .config import load_config, log, offsets_path, route_store, state_dir
+from .config import load_config, log, offsets_path, queue_path, route_store, state_dir
+from ..core.clock import now_ts
 from ..core.gitutil import repo_info
-from ..core.jsonio import locked, read_json, write_json_atomic
+from ..core.jsonio import locked, read_json, read_jsonl, write_json_atomic
 from .store import is_initialized
 
 FEEDBACK_RX = re.compile(r"the user said:\s*(.*?)(?:\n\s*\nNote:|\Z)", re.S | re.I)
 WATCHED_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}
 MAX_FEEDBACK = 200
+MIN_RESEND_CHARS = 20  # shorter prompts ("yes", "continue") are never a request sent again
+MAX_EDITED = 500
 
 
 # ---------- UserPromptSubmit ----------
@@ -32,13 +35,22 @@ def capture_prompt(data):
     off, a short redacted summary of the agent turn being corrected (local queue only). Feedback right
     after the agent edited files is captured at a lower detector threshold."""
     from .capture import enqueue
-    from .context import previous_turn
+    from .context import load_entries, resend, turn_context
     from .detect import FOLLOWUP_THRESHOLD, THRESHOLD, detect
     prompt = data.get("prompt", "")
+    path = data.get("transcript_path") or ""
+    entries = None
+    if len(prompt) >= MIN_RESEND_CHARS and not prompt.lstrip().startswith("/") and os.path.exists(path):
+        entries = load_entries(path)
+        edit = resend(entries, prompt)
+        if edit:
+            return _capture_resend(data, prompt, entries, edit)
     hit = detect(prompt, threshold=FOLLOWUP_THRESHOLD)
     if not hit:
         return
-    ctx = previous_turn(data.get("transcript_path"), prompt)
+    if entries is None and os.path.exists(path):
+        entries = load_entries(path)
+    ctx = turn_context(entries, prompt) if entries else None
     after_edit = bool(ctx and ctx["edited"])
     if hit["score"] < THRESHOLD and not after_edit:
         return
@@ -48,6 +60,41 @@ def capture_prompt(data):
     rec = enqueue("prompt", data.get("session_id"), data.get("cwd"), hit["clause"], **extra)
     if rec:
         log("captured prompt %s signals=%s after_edit=%s" % (rec["id"], ",".join(hit["signals"]), after_edit))
+
+
+def _capture_resend(data, prompt, entries, edit):
+    """The developer sent their last request again with something added. Queue the addition, and
+    forget the tool calls they rejected on the way: stopping the agent to rephrase isn't a pushback."""
+    from .capture import enqueue
+    from .context import turn_context
+    extra = {"signals": ["resend"], "resend": True}
+    ctx = turn_context(entries, prompt)
+    if ctx and load_config().get("capture_context", True):
+        extra["context"] = ctx
+    rec = enqueue("prompt", data.get("session_id"), data.get("cwd"), edit["added"], **extra)
+    dropped = _forget_rejections(edit["rejected_ids"])
+    if rec:
+        log("captured prompt %s signals=resend rejections_dropped=%d" % (rec["id"], dropped))
+
+
+def _edited_path():
+    return os.path.join(state_dir(), "edited_rejections.json")
+
+
+def _forget_rejections(ids):
+    """Remember tool-call ids so the Stop hook skips them, and drop any it already queued."""
+    if not ids:
+        return 0
+    ep = _edited_path()
+    with locked(ep):
+        known = read_json(ep, [])
+        write_json_atomic(ep, (known + [i for i in ids if i not in known])[-MAX_EDITED:])
+    from .distill import _drop_from_queue
+    queued = [m["id"] for m in read_jsonl(queue_path())
+              if m.get("kind") == "rejected_tool" and not m.get("clause") and m.get("tool_use_id") in ids]
+    if queued:
+        _drop_from_queue(queue_path(), set(queued))
+    return len(queued)
 
 
 # ---------- Stop ----------
@@ -124,6 +171,9 @@ def capture_transcript(data):
             offsets = {k: v for k, v in offsets.items() if os.path.exists(k)}
         write_json_atomic(op, offsets)
     found = [x for x in found if not x[1] or x[1] in WATCHED_TOOLS]
+    if found:
+        edited = set(read_json(_edited_path(), []))  # rejected only so the request could be rephrased
+        found = [x for x in found if x[4] or x[0] not in edited]
     if not found:
         return
     from .capture import enqueue
@@ -154,7 +204,7 @@ def session_end(data):
     if is_initialized(home):
         E.emit(home, "session", phase="end", session_id=data.get("session_id", ""), repo=info["repo"],
                langs=info["langs"], reason=data.get("reason", ""))
-    if os.environ.get("HINDSIGHT_NO_BACKGROUND") == "1":
+    if not _distill_due() or os.environ.get("HINDSIGHT_NO_BACKGROUND") == "1":
         return
     src = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     env = dict(os.environ, AI_TOOLKIT_DISABLE="1",
@@ -163,6 +213,22 @@ def session_end(data):
     subprocess.Popen([sys.executable, "-m", "ai_toolkit", "hindsight", "distill", "--quiet"],
                      stdin=subprocess.DEVNULL, stdout=out, stderr=out, start_new_session=True, env=env,
                      cwd=state_dir())
+
+
+IDLE_DISTILL_EVERY = 86400  # with nothing queued, still curate (retire, hand edits) once a day
+
+
+def _distill_due():
+    """True when there are queued moments, or the last background run is more than a day old. Headless
+    sessions end by the hundred with an empty queue; starting a process for each one is pure waste."""
+    stamp = os.path.join(state_dir(), "distill_started.json")
+    qp = queue_path()
+    queued = os.path.exists(qp) and os.path.getsize(qp) > 0
+    now = now_ts()
+    if not queued and now - float(read_json(stamp, {}).get("ts", 0)) < IDLE_DISTILL_EVERY:
+        return False
+    write_json_atomic(stamp, {"ts": now})
+    return True
 
 
 # ---------- SessionStart ----------

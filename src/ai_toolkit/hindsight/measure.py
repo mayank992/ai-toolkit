@@ -16,7 +16,7 @@ def _week(ts):
 def build(cfg, store_name=None, repo=None, weeks=8):
     stores = [s for s in cfg["stores"] if is_initialized(s) and (not store_name or s["name"] == store_name)]
     evs = E.load_all([s for s in cfg["stores"] if is_initialized(s)])
-    sess = S.sessions(evs)
+    sess = {k: v for k, v in S.sessions(evs).items() if v["live"]}  # headless runs are not sessions to rate
     if store_name:
         sids = {e.get("session_id") for e in evs if e.get("_store") == store_name}
         sess = {k: v for k, v in sess.items() if k in sids}
@@ -108,6 +108,8 @@ def render(r, width=30):
         out.append("  %-9s %5s %5s %13s %9s %6s  %s" % ("id", "hits", "inj", "before->after", "repeats", "saved", "lesson"))
         for l in sorted(act, key=lambda x: (-x["prevented"], -x["hits"])):
             flag = "  ⚠ ineffective" if l["flagged_ineffective"] else ""
+            if l["needs_enforcement"]:
+                flag += "  ⚠ repeats while injected: make it a hook"
             out.append("  %-9s %5d %5d %6.2f->%-6.2f %9d %6.1f  %s%s" % (
                 l["id"], l["hits"], l["sessions_injected"], l["before"]["rate"], l["after"]["rate"],
                 l["repeats_while_injected"], l["prevented"], l["text"][:60], flag))

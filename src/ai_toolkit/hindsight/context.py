@@ -4,6 +4,7 @@ Read from the tail of the Claude Code transcript so distill can tell *why* the d
 back, not just what they typed. Everything is redacted and truncated, and it only ever goes to
 the local queue (never a store): distill turns it into an abstract `issue` / `why` and drops it.
 """
+import difflib
 import json
 import os
 
@@ -16,6 +17,13 @@ MAX_ACTIONS = 8
 MAX_CMD = 80
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 REJECT_PREFIX = "The user doesn't want to proceed with this tool use"
+FEEDBACK_MARK = "the user said:"
+# A prompt counts as the previous one sent again when it keeps this share of its words, in order.
+RESEND_KEPT = 0.9
+RESEND_MIN_WORDS = 6
+RESEND_MIN_ADDED_WORDS = 3
+RESEND_MAX_WORDS = 200  # only the start of a long prompt is compared
+MAX_ADDED = 200
 # User-role entries that are not something the developer typed.
 _NOT_TYPED = ("<task-notification>", "<command-", "<local-command", "<system-reminder>", "Caveat:",
               "[Request interrupted")
@@ -136,3 +144,58 @@ def turn_context(entries, current_prompt=None):
         "reply": redact(_clip(t["reply"], MAX_REPLY)),
         "edited": edited,
     }
+
+
+def added_on_resend(prev, cur):
+    """What `cur` says that `prev` didn't, when `cur` is `prev` sent again with something added; else "".
+
+    Developers often interrupt the agent and send the same request again with the constraint they
+    left out ("... Do not commit changes"). That addition is a preference they had to spell out."""
+    a, b = prev.split()[:RESEND_MAX_WORDS], cur.split()[:RESEND_MAX_WORDS + 60]
+    if len(a) < RESEND_MIN_WORDS:
+        return ""
+    key = lambda w: w.lower().strip(".,;:!?")  # "resolved" and "resolved." are the same word
+    sm = difflib.SequenceMatcher(None, [key(w) for w in a], [key(w) for w in b], autojunk=False)
+    ops = sm.get_opcodes()
+    kept = sum(i2 - i1 for tag, i1, i2, _, _ in ops if tag == "equal")
+    if kept < RESEND_KEPT * len(a):
+        return ""
+    runs = [b[j1:j2] for tag, _, _, j1, j2 in ops if tag in ("insert", "replace")]
+    if sum(len(r) for r in runs) < RESEND_MIN_ADDED_WORDS:
+        return ""
+    return _clip(" … ".join(" ".join(r) for r in runs), MAX_ADDED)
+
+
+def _result_text(block):
+    c = block.get("content")
+    if isinstance(c, list):
+        c = "\n".join(x.get("text", "") for x in c if isinstance(x, dict))
+    return c.lstrip() if isinstance(c, str) else ""
+
+
+def resend(entries, current_prompt):
+    """{"added", "rejected_ids"} when `current_prompt` is the previous typed prompt sent again with
+    something added, else None. `rejected_ids` are the tool calls the developer rejected without a
+    reason in between: they stopped the agent to rephrase, which is not a pushback on those calls."""
+    cur = _norm(current_prompt)
+    typed = [(i, t) for i, t in ((i, typed_text(e)) for i, e in enumerate(entries)
+                                 if e.get("type") == "user") if t is not None]
+    while typed and _norm(typed[-1][1]) == cur:
+        typed.pop()
+    if not typed:
+        return None
+    at, prev = typed[-1]
+    added = added_on_resend(prev, current_prompt)
+    if not added:
+        return None
+    ids = []
+    for e in entries[at + 1:]:
+        content = (e.get("message") or {}).get("content")
+        if e.get("type") != "user" or e.get("isSidechain") or not isinstance(content, list):
+            continue
+        for b in content:
+            if isinstance(b, dict) and b.get("type") == "tool_result" and b.get("is_error"):
+                text = _result_text(b)
+                if text.startswith(REJECT_PREFIX) and FEEDBACK_MARK not in text.lower() and b.get("tool_use_id"):
+                    ids.append(b["tool_use_id"])
+    return {"added": added, "rejected_ids": ids}

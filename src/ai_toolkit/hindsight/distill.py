@@ -34,6 +34,9 @@ an Edit/Write/Bash call; `rejected` is that call, `clause` their typed reason, m
 lesson directly). A moment may carry `context`: what the assistant had just done when the developer
 pushed back — `request` (what it was asked), `actions` (its tool calls), `reply` (what it said last).
 `after_edit` = the assistant had just changed files, so the correction is feedback on that work.
+`resend` = the developer stopped the assistant and sent their request again; `clause` is only what
+they added the second time. It is a lesson when it is a standing preference they had to spell out
+("do not commit", "keep the change minimal"), and noise when it is a detail of this one task.
 
 For EVERY moment decide:
 - noise=true if it is not actually correcting the assistant's behaviour (e.g. a new request, a
@@ -146,7 +149,7 @@ def _plan_group(moments, lessons, repo, langs, cfg, use_llm):
         payload = {
             "repo": repo or "(no repo)", "langs": langs,
             "moments": [{k: m.get(k) for k in ("id", "kind", "clause", "tool", "rejected", "file_ext", "signals", "after_rejection",
-                                               "after_edit", "context")
+                                               "after_edit", "resend", "context")
                          if m.get(k) not in (None, "", [], False)} for m in moments],
             "existing": [{"id": l.id, "scope": l.scope, "status": l.status, "text": l.text} for l in existing],
         }

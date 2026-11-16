@@ -85,6 +85,7 @@ export default function ReportView({ report }: { report: Report }) {
                   <td>
                     <span className={`chip status-${l.status}`}>{l.status}</span> {l.text}
                     {l.flagged_ineffective && <> <span className="chip bad"><Icon name="alert" /> ineffective</span></>}
+                    {l.needs_enforcement && <> <span className="chip bad" title="You repeated this in 2+ sessions where Claude had the lesson. A hook would enforce it."><Icon name="alert" /> make it a hook</span></>}
                   </td>
                   <td className="num">
                     <div className="hits">

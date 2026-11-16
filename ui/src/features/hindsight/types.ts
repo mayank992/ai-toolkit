@@ -34,6 +34,8 @@ export interface Moment {
   kind: MomentKind;
   clause: string;
   signals?: string[];
+  /** The clause is what the developer added when they sent their previous request again. */
+  resend?: boolean;
   repo: string;
   store: string;
   langs?: string[];
@@ -111,6 +113,8 @@ export interface LessonEfficacy {
   after: RateWindow;
   prevented: number;
   flagged_ineffective: boolean;
+  /** Pushed back again in 2+ sessions where the lesson was injected: text isn't enough, make it a hook. */
+  needs_enforcement: boolean;
 }
 
 export interface Report {

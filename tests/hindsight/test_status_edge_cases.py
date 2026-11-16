@@ -9,6 +9,11 @@ from support.hindsight_env import ORG_REMOTE, Env
 DAY = 86400
 
 
+def _iso(t):
+    import time
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+
+
 class TestStatusEdgeCases(unittest.TestCase):
     def setUp(self):
         self.e = Env()
@@ -133,6 +138,40 @@ class TestStatusEdgeCases(unittest.TestCase):
         self.assertEqual(len(self.e.queued()), 1)
         self.e.hs("distill")
         self.assertEqual(len([e for e in self.e.events("org") if e["t"] == "moment"]), 1)
+
+    # 9. doctor only fails on errors from the last week
+    def test_doctor_ignores_old_log_errors(self):
+        # Regression: one disk-full error made `ait doctor` exit 1 for good.
+        from support.hindsight_env import DAY
+        os.makedirs(self.e.state, exist_ok=True)
+        log = os.path.join(self.e.state, "hindsight.log")
+        with open(log, "w") as f:
+            f.write("%s capture_transcript error: OSError(28, 'No space left on device')\n" % _iso(self.e.now - 30 * DAY))
+        self.assertIn("ok   no errors in log", self.e.hs("doctor", check=False).stdout)
+        with open(log, "a") as f:
+            f.write("%s capture_prompt error: ValueError('x')\n" % _iso(self.e.now - DAY))
+        out = self.e.hs("doctor", check=False).stdout
+        self.assertIn("FAIL no errors in log", out)
+        self.assertNotIn("No space left", out)
+
+    # 10. SessionEnd starts distill only when there is something to do
+    def test_session_end_skips_distill_when_idle(self):
+        # Regression: every headless session spawned a distill process that found an empty queue.
+        stamp = os.path.join(self.e.state, "distill_started.json")
+        started = lambda: json.load(open(stamp))["ts"]
+        end = lambda: self.e.hook("session_end", {"session_id": "s", "cwd": self.org, "reason": "other"})
+        end()
+        first = started()
+        self.e.now += 3600
+        end()
+        self.assertEqual(started(), first, "nothing queued and distill ran within the day")
+        self.e.hook("capture_prompt", {"session_id": "s", "cwd": self.org, "prompt": "no, use pnpm instead of npm"})
+        end()
+        self.assertEqual(started(), self.e.now, "a queued moment is a reason to run")
+        self.e.hs("distill")
+        self.e.now += 2 * 86400
+        end()
+        self.assertEqual(started(), self.e.now, "idle for a day: run once so curate still retires and pins")
 
 
 if __name__ == "__main__":

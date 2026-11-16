@@ -4,10 +4,17 @@ from datetime import datetime, timezone
 from . import events as ev_mod
 
 EFFICACY_MIN_SESSIONS = 5
+ENFORCE_MIN_SESSIONS = 2  # sessions where a lesson was injected and the same pushback still came
 
 
 def parse_ts(s):
     return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+
+
+def when(e):
+    """When an event happened. A moment is written at distill time, which can be days after the
+    pushback (a backlog, or `hs backfill`), so it carries the capture time as `moment_ts`."""
+    return (e.get("moment_ts") or e["ts"]) if e["t"] == "moment" else e["ts"]
 
 
 def relevant(scope, sess):
@@ -21,19 +28,25 @@ def relevant(scope, sess):
 
 
 def sessions(evs):
-    """session_id -> {repo, langs, ts, moments, injected:set}"""
+    """session_id -> {repo, langs, ts, moments, injected:set, live}
+
+    `live` marks a session the developer took part in: SessionStart ran, lessons were injected or a
+    pushback was captured. Headless runs (SDK or `claude -p` jobs) only ever log a SessionEnd; counting
+    them would dilute every per-session rate, so reports skip sessions that are not live."""
     out = {}
     for e in evs:
         sid = e.get("session_id")
         if e["t"] not in ("session", "inject", "moment") or not sid:
             continue
-        s = out.setdefault(sid, {"repo": e.get("repo", ""), "langs": e.get("langs") or [], "ts": e["ts"],
-                                 "moments": 0, "injected": set()})
+        s = out.setdefault(sid, {"repo": e.get("repo", ""), "langs": e.get("langs") or [], "ts": when(e),
+                                 "moments": 0, "injected": set(), "live": False})
+        if e["t"] != "session" or e.get("phase") == "start":
+            s["live"] = True
         if e.get("langs"):
             s["langs"] = e["langs"]
         if e.get("repo"):
             s["repo"] = e["repo"]
-        s["ts"] = min(s["ts"], e["ts"])
+        s["ts"] = min(s["ts"], when(e))
         if e["t"] == "inject":
             s["injected"].update(e.get("ids") or [])
         if e["t"] == "moment" and not e.get("noise"):
@@ -57,7 +70,7 @@ def lesson_stats(evs, lessons):
             lid = resolve(e["lesson"])
             if lid in st:
                 st[lid]["hit_sessions"].add(e.get("session_id") or e["ts"])
-                st[lid]["last_hit"] = max(st[lid]["last_hit"], e["ts"])
+                st[lid]["last_hit"] = max(st[lid]["last_hit"], when(e))
                 st[lid]["moments"].append(e)
         elif t == "inject":
             for i in e.get("ids") or []:
@@ -80,14 +93,16 @@ def lesson_stats(evs, lessons):
     out = {}
     for l in lessons:
         s = st[l.id]
-        repeats = sum(1 for m in s["moments"] if l.id in sess.get(m.get("session_id"), {}).get("injected", ()))
+        repeat_sids = {m.get("session_id") for m in s["moments"]
+                       if l.id in sess.get(m.get("session_id"), {}).get("injected", ())}
+        repeats = sum(1 for m in s["moments"] if m.get("session_id") in repeat_sids)
         before_n = after_n = before_m = after_m = 0
         act = s["activated"]
         hit_by_sess = {}
         for m in s["moments"]:
             hit_by_sess[m.get("session_id")] = hit_by_sess.get(m.get("session_id"), 0) + 1
         for sid, se in sess.items():
-            if not relevant(l.scope, se):
+            if not se["live"] or not relevant(l.scope, se):
                 continue
             if act and se["ts"] >= act:
                 after_n += 1
@@ -110,5 +125,8 @@ def lesson_stats(evs, lessons):
             "after": {"sessions": after_n, "pushbacks": after_m, "rate": round(after_rate, 3)},
             "prevented": round(max(0.0, before_rate - after_rate) * after_n, 1) if act else 0.0,
             "flagged_ineffective": flagged,
+            # Claude was shown the lesson and the developer still had to repeat it: text is not enough,
+            # so the rule is a candidate for a hook.
+            "needs_enforcement": bool(act) and len(repeat_sids) >= ENFORCE_MIN_SESSIONS,
         }
     return out

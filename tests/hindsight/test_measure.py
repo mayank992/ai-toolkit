@@ -97,5 +97,57 @@ class TestMeasure(unittest.TestCase):
         self.assertIn("trend: ↓", self.e.hs("report").stdout)
 
 
+    def test_headless_sessions_are_not_counted(self):
+        # Regression: SDK and `claude -p` runs only ever log a SessionEnd. 300 of them a week made the
+        # weekly pushback rate look like it had dropped to zero.
+        self.lesson("L-00000d", "Use pnpm")
+        self.seed("L-00000d", before=[2, 2], after=[0, 0, 0])
+        p = os.path.join(self.e.store_path("org"), "events", "seed.jsonl")
+        with open(p, "a") as f:
+            for i in range(40):
+                f.write(json.dumps({"t": "session", "ts": ts(T0 + 3 * DAY), "session_id": "sdk%d" % i, "repo": ORG_REPO,
+                                    "langs": [], "phase": "end", "reason": "other"}) + "\n")
+        r = self.report()
+        self.assertEqual(r["totals"]["sessions"], 5)
+        l = next(x for x in r["lessons"] if x["id"] == "L-00000d")
+        self.assertEqual(l["before"]["sessions"] + l["after"]["sessions"], 5)
+
+    def test_lesson_repeated_while_injected_needs_enforcement(self):
+        # Regression: a lesson with no pushbacks before activation was never flagged, however often the
+        # developer had to repeat it afterwards.
+        self.lesson("L-00000e", "Do not run tsc after every edit")
+        self.seed("L-00000e", before=[0, 0], after=[1, 0, 2, 0, 0, 1])
+        l = next(x for x in self.report()["lessons"] if x["id"] == "L-00000e")
+        self.assertFalse(l["flagged_ineffective"])
+        self.assertTrue(l["needs_enforcement"])
+        self.assertIn("make it a hook", self.e.hs("report").stdout)
+        self.e.hs("curate", "--store", "org")
+        self.assertEqual(self.e.lessons("org")["L-00000e"].status, "active", "repeating is a reason to enforce, not retire")
+
+    def test_backlog_distilled_late_counts_when_it_happened(self):
+        # Regression: pushbacks distilled days later (a backlog, `hs backfill`) were dated at distill time,
+        # so sessions from before a lesson existed counted as "after" and its before-rate read 0.
+        self.lesson("L-0000a1", "Use pnpm")
+        self.seed("L-0000a1", before=[], after=[0, 0])
+        late = ts(T0 + 2 * DAY)  # written after the promote event at T0 + 1 day
+        p = os.path.join(self.e.store_path("org"), "events", "seed.jsonl")
+        with open(p, "a") as f:
+            for i in range(3):
+                f.write(json.dumps({"t": "moment", "ts": late, "moment_ts": ts(T0 - (3 - i) * DAY), "session_id": "old%d" % i,
+                                    "repo": ORG_REPO, "kind": "prompt", "signals": ["lead_no"], "noise": False,
+                                    "lesson": "L-0000a1"}) + "\n")
+        r = self.report()
+        l = next(x for x in r["lessons"] if x["id"] == "L-0000a1")
+        self.assertEqual(l["before"], {"sessions": 3, "pushbacks": 3, "rate": 1.0})
+        self.assertEqual(l["after"]["pushbacks"], 0)
+        self.assertEqual(len(r["weekly"]), 2, "the old sessions fall in their own week")
+
+    def test_one_repeat_is_not_enough_to_enforce(self):
+        self.lesson("L-00000f", "Use pnpm")
+        self.seed("L-00000f", before=[2, 1], after=[0, 3, 0, 0, 0, 0])
+        l = next(x for x in self.report()["lessons"] if x["id"] == "L-00000f")
+        self.assertFalse(l["needs_enforcement"])
+
+
 if __name__ == "__main__":
     unittest.main()

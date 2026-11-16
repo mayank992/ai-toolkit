@@ -100,6 +100,7 @@ function LessonRow({ l, e, fresh }: { l: Lesson; e?: LessonEfficacy; fresh: bool
         <span className={`chip status-${l.status}`}>{l.status}</span>
         {l.pinned && <span className="chip">pinned</span>}
         {e?.flagged_ineffective && <span className="chip bad"><Icon name="alert" /> ineffective</span>}
+        {e?.needs_enforcement && <span className="chip bad" title="You repeated this in 2+ sessions where Claude had the lesson. A hook would enforce it."><Icon name="alert" /> make it a hook</span>}
         <span className="small muted" title={l.scope}>applies in <b>{shortScope(l.scope)}</b></span>
         <span className="spacer" />
         <span className="id" title={`${l.store}/${l.file}`}>{l.id}</span>

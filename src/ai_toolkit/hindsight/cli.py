@@ -9,9 +9,12 @@ import os
 import sys
 
 from .config import config_path, hostname, load_config, log_path, queue_path, route_store, save_config, state_dir
+from ..core.clock import iso, now_ts
 from ..core.jsonio import read_jsonl
 from ..core.gitutil import repo_info
 from . import store as st
+
+LOG_ERROR_DAYS = 7  # doctor ignores log errors older than this
 
 
 def cmd_status(a):
@@ -375,8 +378,9 @@ def cmd_doctor(a):
     import shutil
     check(shutil.which("claude") is not None, "claude CLI on PATH (for distill)", "distill will fall back to rules")
     errs = [l for l in open(log_path())] if os.path.exists(log_path()) else []
-    errs = [l for l in errs if "error" in l or "exit " in l][-3:]
-    check(not errs, "no recent errors in log", "see %s" % log_path())
+    cutoff = iso(now_ts() - LOG_ERROR_DAYS * 86400)  # log lines start with an ISO timestamp, so text compare works
+    errs = [l for l in errs if ("error" in l or "exit " in l) and l[:1].isdigit() and l[:20] >= cutoff][-3:]
+    check(not errs, "no errors in log in the last %d days" % LOG_ERROR_DAYS, "see %s" % log_path())
     for l in errs:
         print("       " + l.rstrip()[:200])
     sys.exit(0 if ok else 1)

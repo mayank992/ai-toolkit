@@ -59,6 +59,8 @@ def _refine_rejection(m, entries, with_context):
 
 def _refine_prompt(m, entries, with_context):
     from .detect import FOLLOWUP_THRESHOLD, detect
+    if m.get("resend"):  # the clause is what a re-sent request added, not something the detector matched
+        return "same", m, ""
     at = None
     for i, e in enumerate(entries):
         if e.get("type") != "user":

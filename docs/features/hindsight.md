@@ -4,7 +4,7 @@ Self-improving memory for Claude Code. It captures the moments where you push ba
 
 | Stage | What |
 |---|---|
-| Capture | Correction prompts, rejected tool uses and `/lesson` are written to a local queue |
+| Capture | Correction prompts, what you add when you send a request again, rejected tool uses and `/lesson` are written to a local queue |
 | Distill | SessionEnd → background `claude -p --model haiku` turns moments into candidate lessons (rule fallback) |
 | Curate | Merge duplicates, promote after hits in 2 sessions, retire unused/ineffective, cap 50/scope, `hs review` |
 | Inject | SessionStart loads lessons for this repo, its languages, and global ones (≤15 lines) |
@@ -38,6 +38,12 @@ For each active lesson, hindsight counts pushbacks matched to it per *relevant* 
 language, or any session for global lessons), before and after activation. A lesson with ≥5 injected
 sessions whose rate didn't drop is flagged ⚠ and retired (unless pinned).
 
+A lesson you had to repeat in two or more sessions where Claude already had it is flagged **make it a
+hook**: showing Claude the text was not enough, so the rule needs a hook to enforce it. It stays active.
+
+Only sessions you took part in are counted (SessionStart ran, or a lesson was injected, or a pushback was
+captured). Headless runs, such as SDK jobs and `claude -p`, only log a SessionEnd and are left out.
+
 Caveat: lessons are created *because* of pushbacks, so "before" rates are biased upward
 (regression to the mean). Trust the trend over many sessions more than any single lesson's number.
 
@@ -54,7 +60,7 @@ Caveat: lessons are created *because* of pushbacks, so "before" rates are biased
 
 ## Privacy
 
-- Raw prompts are never stored. For a correction prompt, only the sentences that carried the correction signal are kept (≤200 chars).
+- Raw prompts are never stored. For a correction prompt, only the sentences that carried the correction signal are kept (≤200 chars). For a request you sent again, only the words you added are kept (≤200 chars).
 - To learn *why* you pushed back, the local queue also keeps a short summary of the agent turn you corrected: your previous request (≤300 chars), its tool calls (file names, commands cut to 80 chars) and its last reply (≤300 chars). It is redacted, never synced, and deleted after distill; stores keep only the abstract `issue` and `why`. Turn it off with `"capture_context": false` in the `hindsight` section of `~/.config/ai-toolkit/config.json`.
 - Everything is redacted before it is written: API keys and tokens, JWTs, AWS keys, `password=`-style values, emails, URL credentials, and `$HOME` → `~`.
 - For rejected tool uses, the tool name, file extension, a one-line summary of the call (file name, or the command cut to 80 chars) and your typed feedback are kept. Never the diff. `"capture_context": false` drops the call summary too.
@@ -177,6 +183,8 @@ Negative patterns are removed before scoring, for example "no problem", "no-op",
 
 Each signal is recorded, and Measure uses this to report how precise each signal is.
 
+**A request sent again** (`context.py`, signal `resend`). Developers often stop the agent and send the same request again with the constraint they left out ("… Do not commit the changes"). When a prompt keeps at least 90% of the previous prompt's words in order and adds three or more, only the added words are queued, with `resend: true`. Tool calls rejected without a reason between the two prompts are not queued (or are removed if the Stop hook already queued them): stopping the agent to rephrase is not a pushback on those calls. Distill keeps the addition when it is a standing preference and marks it noise when it is a detail of that one task. `hs report` shows the precision of `resend` next to the other signals.
+
 **Feedback on an implementation.** Right after the agent edits files, the next prompt is often feedback on that work even without a "no" ("the import is broken now, it should be a named import"). When the previous agent turn used `Edit`, `Write`, `MultiEdit` or `NotebookEdit`, the threshold drops to **1.0**, and three weak signals exist for this: `broken` ("doesn't work", "broke", "still failing", 1.5), `should_be` ("it should…", 1.0) and `missing` ("is missing", 1.0). Distill's LLM marks the follow-ups that are really new requests as noise.
 
 **Agent-turn context** (`context.py`). For every captured moment, the hook reads the last 512 KB of the transcript (about 4 ms on a 2.3 MB transcript). It finds the turn being corrected: the last prompt the developer typed before this one (skipping tool results, task notifications, `[Request interrupted…]` markers, meta entries and sidechains, and the current prompt if it is already written). It records:
@@ -202,7 +210,7 @@ Every append takes an `fcntl` lock. The entry id is a short content hash, so if 
 
 #### 3.2 Distill
 
-The `session_end` hook writes a `session` end event. It then starts `python -m ai_toolkit hindsight distill --quiet` in a new process session with `AI_TOOLKIT_DISABLE=1`, so the nested `claude -p` doesn't trigger hindsight's own hooks. The hook returns immediately.
+The `session_end` hook writes a `session` end event. If the queue is empty and a background run started in the last 24 hours, it stops there, so headless sessions don't each start a process. Otherwise it starts `python -m ai_toolkit hindsight distill --quiet` in a new process session with `AI_TOOLKIT_DISABLE=1`, so the nested `claude -p` doesn't trigger hindsight's own hooks. The hook returns immediately.
 
 `distill.py` works like this:
 1. Takes a **non-blocking run lock**. If another distill is already running, this one exits.
@@ -290,6 +298,9 @@ For each lesson:
 - **Repeats while injected:** pushbacks matched to the lesson in sessions where it was injected. This is the direct failure signal.
 - **Prevented:** `max(0, before_rate − after_rate) × after_sessions`.
 - **Flagged ineffective:** the lesson has been injected in at least 5 sessions, `before_rate > 0`, and `after_rate ≥ before_rate`. Curate then retires it.
+- **Needs enforcement:** pushbacks matched to the lesson in at least 2 sessions where it was injected. The report and dashboard show "make it a hook". Curate does not retire it for this.
+
+Sessions that only have an end event (headless runs) are excluded from every count above and from the weekly rate.
 
 `hs report` shows:
 - weekly pushbacks per session as ASCII bars, with a trend arrow;
@@ -360,6 +371,8 @@ Every event has `t` (type) and `ts` (ISO UTC). The host is implied by the file i
 | `lesson_hashes.json` | `{store: {id: {h, s}}}` used for hand-edit detection |
 | `rank_cache.json` | `{store: {id: hits}}`, so SessionStart doesn't have to replay events |
 | `unreviewed.json` | auto-promoted lessons not yet reviewed |
+| `edited_rejections.json` | ids of tool calls rejected only so a request could be sent again; the Stop hook skips them |
+| `distill_started.json` | when SessionEnd last started a background distill |
 | `hindsight.log`, `distill.out` | diagnostics |
 
 ### 5. Store routing
@@ -424,6 +437,7 @@ Each test gets, through `tests/support/hindsight_env.py`:
 | hindsight/test_curate | merge, promote at 2 sessions, retire by age, cap, pinned on hand edit, hand status changes, deletes, review |
 | hindsight/test_inject | scope selection, ranking, budget, cross-store reads, the CLI preview, SessionStart latency (< 0.5 s) |
 | hindsight/test_measure | before/after efficacy, ineffective flag leading to retirement, weekly buckets, detector precision |
+| hindsight/test_resend | a request sent again: only the addition is queued, reasonless rejections on the way are dropped, typed reasons stay |
 | hindsight/test_backfill | dry run writes nothing; false positives dropped, rejected call and the right turn recovered, missing transcripts kept, second run a no-op; refuses while distill holds the run lock |
 | hindsight/test_lifecycle_edge_cases, test_status_edge_cases | hand edits vs distill, dry runs and failures that must write nothing, decisions the developer made by hand staying made, scope normalization, catch-all routing |
 | e2e/test_plugin_lifecycle | every hook run through the exact command in `hooks/hooks.json` across 9 sessions; then report, privacy grep, sync to a bare remote, secret blocking, and `"enabled": false` turning the hooks off |

@@ -160,6 +160,8 @@ def curate(store, cfg=None, use_llm=True, dry_run=False):
         if s["flagged_ineffective"]:
             reason = "ineffective: %.2f -> %.2f pushbacks/session after %d injected sessions" % (
                 s["before"]["rate"], s["after"]["rate"], s["sessions_injected"])
+            if s["needs_enforcement"]:
+                reason += "; it kept repeating while injected, so enforce it with a hook instead"
         elif age is not None and age > retire_days:
             reason = "unused for %d days" % age
         if reason:
