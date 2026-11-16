@@ -9,7 +9,7 @@ import urllib.request
 
 import sys
 
-from support.hindsight_env import AIT, DAY, ORG_REMOTE, REPO, Env
+from support.hindsight_env import AIT, DAY, ORG_REMOTE, Env
 
 
 def free_port():
@@ -35,19 +35,10 @@ class TestUi(unittest.TestCase):
             self.server.stdout.close()
             self.server = None
 
-    def register(self, *events, plugin=False):
-        """Wire hooks for `events` the pre-0.2 way (commands in settings.json), or enable the plugin."""
-        with open(os.path.join(REPO, "hooks", "hooks.json")) as f:
-            declared = json.load(f)["hooks"]
-        hooks = {}
-        for event in events:
-            hook = declared[event][0]["hooks"][0]["command"].rsplit(".", 1)[-1]
-            cmd = '"$HOME/.claude/ai-toolkit/modules/hindsight/hooks/%s.py"' % hook
-            hooks.setdefault(event, []).append({"hooks": [{"type": "command", "command": cmd}]})
-        settings = {"enabledPlugins": {"ai-toolkit@ai-toolkit": True}} if plugin else {"hooks": hooks}
+    def enable_plugin(self):
         os.makedirs(os.path.join(self.e.home, ".claude"), exist_ok=True)
         with open(os.path.join(self.e.home, ".claude", "settings.json"), "w") as f:
-            json.dump(settings, f)
+            json.dump({"enabledPlugins": {"ai-toolkit@ai-toolkit": True}}, f)
 
     def start(self):
         self.stop()
@@ -64,14 +55,13 @@ class TestUi(unittest.TestCase):
     def health(self, snap):
         return {s["id"]: s["health"] for s in snap["stages"]}
 
-    def test_capture_only_install_shows_stalled_queue_and_off_stages(self):
-        self.register("UserPromptSubmit", "Stop")
+    def test_without_plugin_hook_stages_are_off_and_queue_stalls(self):
         self.e.hook("capture_prompt.py", {"session_id": "s1", "cwd": self.org, "prompt": "no, use pnpm instead of npm"})
         self.start()
         snap = self.get()
         self.assertEqual(len(snap["queue"]), 1)
         self.assertEqual(snap["queue"][0]["clause"], "no, use pnpm instead of npm")
-        self.assertEqual(self.health(snap), {"capture": "ok", "queue": "waiting", "distill": "off",
+        self.assertEqual(self.health(snap), {"capture": "off", "queue": "waiting", "distill": "off",
                                              "curate": "off", "store": "ok", "inject": "off"})
 
         self.e.now += 2 * DAY
@@ -79,7 +69,7 @@ class TestUi(unittest.TestCase):
         self.assertEqual(self.health(self.get())["queue"], "stalled")
 
     def test_full_loop_lands_lessons_events_and_report(self):
-        self.register("UserPromptSubmit", "Stop", "SessionEnd", "SessionStart")
+        self.enable_plugin()
         self.e.session("s1", self.org, ["no, use pnpm instead of npm"])
         self.e.session("s2", self.org, ["no, use pnpm instead of npm"])
         self.e.session("s3", self.org)
@@ -99,7 +89,7 @@ class TestUi(unittest.TestCase):
         self.assertEqual(ctx["last_inject"]["ids"], [lesson["id"]])
 
     def test_enabled_plugin_counts_as_every_hook_registered(self):
-        self.register(plugin=True)
+        self.enable_plugin()
         self.start()
         hooks = self.get()["hooks"]
         self.assertEqual({h["via"] for h in hooks}, {"plugin"})

@@ -9,7 +9,6 @@ ai-toolkit is a Claude Code plugin with a Python package (`src/ai_toolkit`) and 
 - `hooks/hooks.json` + `hooks/run.py`: how Claude Code calls the hooks. `skills/`: `/lesson`, `/mr-retro`. `bin/`: `ait`, `hs`.
 - `ui/src/features/<feature>/`: dashboard views. `ui/src/shell/`: the frame around them.
 - `tests/` mirrors `src/`. Shared fixtures are in `tests/support/`.
-- `modules/`: deprecated 0.1 shims. Don't add to it.
 
 ## Rules
 

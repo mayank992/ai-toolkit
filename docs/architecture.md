@@ -107,11 +107,9 @@ Each snapshot is built in-process on its own thread, with a 30 s timeout. A slow
 
 ## Upgrading from 0.1
 
-0.1 was installed by `install.sh`, which wrote hook entries into `~/.claude/settings.json` and symlinks into `~/.local/bin`, `~/.claude/commands` and `~/.claude/ai-toolkit`. 0.2 keeps those old paths working, so an un-migrated machine doesn't break:
+0.1 was installed by `install.sh`, which wrote hook entries into `~/.claude/settings.json` and symlinks into `~/.local/bin`, `~/.claude/commands` and `~/.claude/ai-toolkit`. Those old paths no longer exist in 0.2, so a 0.1 machine has to switch to the plugin ([getting started](getting-started.md#upgrading-from-01)). What carries over by itself:
 
-- `modules/` holds thin forwarding shims at the paths 0.1 registered.
-- `core.install` reports legacy hooks as registered (`via: "legacy"`).
-- `core.config` reads the old `hindsight.json` and `setup.json`.
+- `core.config` reads the old `hindsight.json` and `setup.json` until the first save.
 - hindsight moves its old state folder to the new location on first use.
 
-`ait migrate-legacy` removes the 0.1 entries once the plugin is enabled. The `modules/` shims will be deleted in a later release ([getting started](getting-started.md#upgrading-from-01)).
+`ait migrate-legacy` (`core/legacy.py`) removes the old hook entries and links, and `ait doctor` reports any that are left.

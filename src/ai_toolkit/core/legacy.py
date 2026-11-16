@@ -13,9 +13,9 @@ import shutil
 import time
 
 from . import paths
-from .install import LEGACY_TAG
 from .jsonio import read_json
 
+LEGACY_TAG = "/.claude/ai-toolkit/"  # in every hook command 0.1 wrote
 LINK_DIRS = (paths.home(".local", "bin"), paths.claude_dir("commands"))
 
 

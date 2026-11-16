@@ -427,7 +427,7 @@ Each test gets, through `tests/support/hindsight_env.py`:
 | hindsight/test_backfill | dry run writes nothing; false positives dropped, rejected call and the right turn recovered, missing transcripts kept, second run a no-op; refuses while distill holds the run lock |
 | hindsight/test_lifecycle_edge_cases, test_status_edge_cases | hand edits vs distill, dry runs and failures that must write nothing, decisions the developer made by hand staying made, scope normalization, catch-all routing |
 | e2e/test_plugin_lifecycle | every hook run through the exact command in `hooks/hooks.json` across 9 sessions; then report, privacy grep, sync to a bare remote, secret blocking, and `"enabled": false` turning the hooks off |
-| dashboard/test_hindsight_dashboard | `ait ui`: feature listing, unknown feature 404, stage health with a capture-only legacy install (waiting, then stalled), plugin-enabled hooks, the full loop landing lessons and events, the per-repo injected context, foreign `Host` rejected |
+| dashboard/test_hindsight_dashboard | `ait ui`: feature listing, unknown feature 404, stage health without the plugin (hook stages off, queue waiting then stalled), plugin-enabled hooks, the full loop landing lessons and events, the per-repo injected context, foreign `Host` rejected |
 
 A manual live run with real Claude and Haiku in a sandbox reproduced the whole loop:
 1. Claude used npm.

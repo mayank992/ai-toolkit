@@ -52,11 +52,14 @@ def cmd_snapshot(a):
 
 
 def cmd_doctor(a):
-    from .core import config, install
+    from .core import config, install, legacy
     from .hindsight import cli as hs
     print("ai-toolkit %s" % __version__)
     print("  plugin:  %s" % (install.plugin_enabled() or "not enabled (see docs/getting-started.md)"))
     print("  config:  %s" % config.path())
+    left = legacy.plan()
+    if left:
+        print("  0.1:     %d leftover hook(s)/link(s) that no longer work; run `ait migrate-legacy`" % len(left))
     print("hindsight:")
     hs.cmd_doctor(a)
 

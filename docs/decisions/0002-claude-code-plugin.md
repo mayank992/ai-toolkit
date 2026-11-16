@@ -16,5 +16,5 @@ The repo root is a plugin, and also a marketplace that lists itself (`"source": 
 - Added from a local clone, the plugin loads in place, which matches the old symlink workflow for development.
 - Hook paths no longer depend on where the repo is cloned.
 - State stays in XDG folders, not `${CLAUDE_PLUGIN_DATA}`, because uninstalling a plugin deletes that folder.
-- 0.1 machines need a one-time `ait migrate-legacy`. Until a machine runs it, the shims in `modules/` keep the old hook paths working.
+- 0.1 machines need to install the plugin and run `ait migrate-legacy` once. The old hook paths aren't kept, so hindsight is off on such a machine until it switches.
 - **Alternative rejected: one plugin per feature.** Only hindsight has hooks, and splitting would mean copying `core` into every plugin. A per-feature `"enabled"` flag gives the same opt-out.

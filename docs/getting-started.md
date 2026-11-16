@@ -88,7 +88,7 @@ ait setup apply ~/code/ai-setup --dry-run
 
 ## Upgrading from 0.1
 
-If you installed with the old `install.sh`, everything keeps working on 0.2: the old hook paths forward to the new code, and the old config files are still read. To switch to the plugin:
+If you installed with the old `install.sh`, its hooks stop running once you pull 0.2, because the paths they point at are gone. Your config files are still read and your state moves over by itself. Switch to the plugin:
 
 ```bash
 cd ~/code/repos/ai-toolkit && git pull

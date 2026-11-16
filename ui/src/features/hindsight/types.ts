@@ -16,8 +16,8 @@ export interface Hook {
   event: string;
   hook: string;
   registered: boolean;
-  /** "plugin" (hooks/hooks.json via the enabled plugin), "legacy" (pre-0.2 settings.json entry) or "". */
-  via: "plugin" | "legacy" | "";
+  /** "plugin" (hooks/hooks.json via the enabled plugin) or "" (not registered). */
+  via: "plugin" | "";
 }
 
 export interface TurnContext {

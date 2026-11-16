@@ -1,1 +1,0 @@
-../../../skills/mr-retro/SKILL.md

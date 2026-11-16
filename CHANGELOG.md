@@ -28,11 +28,9 @@ The repo is restructured as a Claude Code plugin and a single Python package. Be
 - Tests moved to `tests/<feature>/`, named by topic instead of build step, and run with pytest.
 
 ### Removed
-- `install.sh`, `uninstall.sh`, `lib/settings_merge.py`, `module.json` files, `modules/hindsight/setup.sh`, and hook build steps (`--steps`).
+- `install.sh`, `uninstall.sh`, `lib/settings_merge.py`, and the whole `modules/` tree (including `module.json` files, `setup.sh` and hook build steps, `--steps`). A 0.1 machine has to install the plugin and run `ait migrate-legacy`; `ait doctor` flags leftovers.
 - `hs ui` (use `ait ui`), `hs snapshot`, `ai-rules snapshot` and `ai-setup snapshot` (use `ait snapshot <feature>`).
 
-### Deprecated
-- `modules/`: forwarding shims for paths a 0.1 install registered. They will be removed in 0.3, so run `ait migrate-legacy` before upgrading to it.
 
 ## [0.1.0]
 
