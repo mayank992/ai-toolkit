@@ -1,0 +1,119 @@
+"""The dashboard server (`ait ui`) serving lessons's snapshot: stage health, the loop, Host checks."""
+import json
+import os
+import socket
+import subprocess
+import unittest
+import urllib.error
+import urllib.request
+
+import sys
+
+from support.lessons_env import AIT, DAY, ORG_REMOTE, Env
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+class TestUi(unittest.TestCase):
+    def setUp(self):
+        self.e = Env()
+        self.org = self.e.repo("web", ORG_REMOTE, ["package.json"])
+        self.server = None
+
+    def tearDown(self):
+        self.stop()
+        self.e.cleanup()
+
+    def stop(self):
+        if self.server:
+            self.server.terminate()
+            self.server.wait(10)
+            self.server.stdout.close()
+            self.server = None
+
+    def enable_plugin(self):
+        os.makedirs(os.path.join(self.e.home, ".claude"), exist_ok=True)
+        with open(os.path.join(self.e.home, ".claude", "settings.json"), "w") as f:
+            json.dump({"enabledPlugins": {"ai-toolkit@ai-toolkit": True}}, f)
+
+    def start(self):
+        self.stop()
+        self.port = free_port()
+        self.server = subprocess.Popen([sys.executable, AIT, "ui", "--api-only", "--port", str(self.port)],
+                                       env=self.e._env(), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        self.assertIn("ai-toolkit ui", self.server.stdout.readline())
+
+    def get(self, host="127.0.0.1", path="/api/features/lessons/snapshot"):
+        req = urllib.request.Request("http://127.0.0.1:%d%s" % (self.port, path), headers={"Host": host})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read())
+
+    def health(self, snap):
+        return {s["id"]: s["health"] for s in snap["stages"]}
+
+    def test_without_plugin_hook_stages_are_off_and_queue_stalls(self):
+        self.e.hook("capture_prompt.py", {"session_id": "s1", "cwd": self.org, "prompt": "no, use pnpm instead of npm"})
+        self.start()
+        snap = self.get()
+        self.assertEqual(len(snap["queue"]), 1)
+        self.assertEqual(snap["queue"][0]["clause"], "no, use pnpm instead of npm")
+        self.assertEqual(self.health(snap), {"capture": "off", "queue": "waiting", "distill": "off",
+                                             "curate": "off", "store": "ok", "inject": "off"})
+
+        self.e.now += 2 * DAY
+        self.start()
+        self.assertEqual(self.health(self.get())["queue"], "stalled")
+
+    def test_full_loop_lands_lessons_events_and_report(self):
+        self.enable_plugin()
+        self.e.session("s1", self.org, ["no, use pnpm instead of npm"])
+        self.e.session("s2", self.org, ["no, use pnpm instead of npm"])
+        self.e.session("s3", self.org)
+        self.start()
+        snap = self.get()
+        self.assertEqual(snap["queue"], [])
+        self.assertTrue(all(h == "ok" for h in self.health(snap).values()), snap["stages"])
+        org = next(s for s in snap["stores"] if s["name"] == "org")
+        self.assertEqual([l["status"] for l in org["lessons"]], ["active"])
+        self.assertIn("moment", {e["t"] for e in snap["events"]})
+        self.assertEqual(snap["report"]["totals"]["sessions"], 3)
+        lesson = org["lessons"][0]
+        self.assertEqual({(p["lesson"], p["lesson_text"]) for p in snap["processed"]}, {(lesson["id"], lesson["text"])})
+        ctx = next(r for r in snap["in_context"] if r["repo"] == "gitlab.example-corp.com/team/web")
+        self.assertEqual([l["id"] for l in ctx["lessons"]], [lesson["id"]])
+        self.assertIn(lesson["text"], ctx["rendered"])
+        self.assertEqual(ctx["last_inject"]["ids"], [lesson["id"]])
+
+    def test_enabled_plugin_counts_as_every_hook_registered(self):
+        self.enable_plugin()
+        self.start()
+        hooks = self.get()["hooks"]
+        self.assertEqual({h["via"] for h in hooks}, {"plugin"})
+        self.assertEqual(len(hooks), 4)
+
+    def test_disabled_feature_is_hidden(self):
+        self.e.set_config(enabled=False)
+        self.start()
+        self.assertNotIn("lessons", [m["name"] for m in self.get(path="/api/features")])
+
+    def test_lists_lessons_and_404s_unknown_features(self):
+        self.start()
+        mods = self.get(path="/api/features")
+        self.assertIn("lessons", [m["name"] for m in mods])
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self.get(path="/api/features/nope/snapshot")
+        self.assertEqual(cm.exception.code, 404)
+
+    def test_rejects_foreign_host_header(self):
+        self.start()
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self.get(host="attacker.example")
+        self.assertEqual(cm.exception.code, 403)
+
+
+if __name__ == "__main__":
+    unittest.main()

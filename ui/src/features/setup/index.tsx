@@ -1,4 +1,4 @@
-import { defineModule, Icon, ago, type ViewProps } from "@toolkit/ui";
+import { defineFeature, Icon, ago, type ViewProps } from "@toolkit/ui";
 import type { Item, Section, Snapshot, Tool, ToolExport } from "./types";
 import "./styles.css";
 
@@ -193,7 +193,7 @@ function SetupView({ snap, route, navigate }: ViewProps<Snapshot>) {
   );
 }
 
-export default defineModule<Snapshot>({
+export default defineFeature<Snapshot>({
   View: SetupView,
   freshKeys: (s) => s.tools.flatMap((t) => t.sections.flatMap((sec) => sec.items.map((i) => `${t.id}|${sec.id}|${i.name}|${i.detail}`))),
 });

@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { useSnapshot } from "./useSnapshot";
 import { ago } from "./time";
 import Icon from "./Icon";
-import { MODULE_UIS } from "./registry";
-import ModuleBoundary from "./ModuleBoundary";
+import { FEATURE_UIS } from "./registry";
+import FeatureBoundary from "./FeatureBoundary";
 
-interface ModuleInfo {
+interface FeatureInfo {
   name: string;
   title: string;
   tagline: string;
@@ -29,17 +29,17 @@ function useTheme(): [Theme, () => void] {
   return [theme, toggle];
 }
 
-function useModules(): ModuleInfo[] | string | undefined {
-  const [mods, setMods] = useState<ModuleInfo[] | string>();
+function useFeatures(): FeatureInfo[] | string | undefined {
+  const [mods, setMods] = useState<FeatureInfo[] | string>();
   useEffect(() => {
-    fetch("/api/modules")
+    fetch("/api/features")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then(setMods, (e) => setMods(String(e)));
   }, []);
   return mods;
 }
 
-/** "#<module>/<route>" -> [module, route]. An unknown first segment is a route of the default module. */
+/** "#<feature>/<route>" -> [feature, route]. An unknown first segment is a route of the default feature. */
 function parseHash(names: string[]): [string, string] {
   const h = decodeURIComponent(location.hash.slice(1));
   const slash = h.indexOf("/");
@@ -51,7 +51,7 @@ function parseHash(names: string[]): [string, string] {
 export default function App() {
   const [theme, toggleTheme] = useTheme();
   const [paused, setPaused] = useState(false);
-  const mods = useModules();
+  const mods = useFeatures();
   const list = Array.isArray(mods) ? mods : [];
   const [[active, route], setLoc] = useState<[string, string]>(["", ""]);
 
@@ -69,8 +69,8 @@ export default function App() {
   };
 
   const info = list.find((m) => m.name === active);
-  const ui = MODULE_UIS[active];
-  const feed = useSnapshot<unknown>(info && ui ? `/api/m/${active}/snapshot` : null, 3000, paused, ui?.freshKeys);
+  const ui = FEATURE_UIS[active];
+  const feed = useSnapshot<unknown>(info && ui ? `/api/features/${active}/snapshot` : null, 3000, paused, ui?.freshKeys);
   const snap = feed.state === "ready" ? feed.snap : feed.state === "error" ? feed.last : undefined;
   const fresh = feed.state === "ready" ? feed.fresh : new Set<string>();
   const stamp = (snap as { generated_at?: string } | undefined)?.generated_at;
@@ -101,14 +101,14 @@ export default function App() {
       </header>
 
       {typeof mods === "string" ? (
-        <div className="card empty"><b>Dashboard server unreachable</b>{mods}. Start it with <code>ai-toolkit ui</code>.</div>
+        <div className="card empty"><b>Dashboard server unreachable</b>{mods}. Start it with <code>ait ui</code>.</div>
       ) : !mods ? (
-        <div className="card empty"><b>Loading modules…</b></div>
+        <div className="card empty"><b>Loading features…</b></div>
       ) : !list.length ? (
         <div className="card empty"><b>No feature has a dashboard yet</b>Enable a feature in <code>~/.config/ai-toolkit/config.json</code>, or add one to <code>src/ai_toolkit/dashboard/registry.py</code>.</div>
       ) : (
         <div className="shell">
-          <nav className="side" aria-label="Modules">
+          <nav className="side" aria-label="Features">
             {list.map((m) => (
               <button key={m.name} className={m.name === active ? "active" : ""} onClick={() => go(m.name)}>
                 <span className="side-title">{m.title}</span>
@@ -116,11 +116,11 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <section className="module" key={active}>
+          <section className="feature" key={active}>
             {!ui ? (
               <div className="card empty">
                 <b>{info?.title ?? active} isn't in this build</b>
-                Rebuild the dashboard to pick up new module UIs: <code>pnpm -C ui build</code>
+                Rebuild the dashboard to pick up new feature views: <code>pnpm -C ui build</code>
               </div>
             ) : !snap ? (
               <div className="card empty">
@@ -128,9 +128,9 @@ export default function App() {
                 {feed.state === "error" ? <pre className="err">{feed.message}</pre> : null}
               </div>
             ) : (
-              <ModuleBoundary name={info?.title ?? active}>
+              <FeatureBoundary name={info?.title ?? active}>
                 <ui.View snap={snap} fresh={fresh} route={route} navigate={(r) => go(active, r)} />
-              </ModuleBoundary>
+              </FeatureBoundary>
             )}
           </section>
         </div>

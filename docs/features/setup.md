@@ -32,7 +32,7 @@ as `/Users/alice` applies cleanly as `/home/bob`.
 ## Secrets
 
 - Values of secret-looking env vars and headers, `--token X` / `KEY=value` arguments, and token-shaped strings
-  (the shapes in `src/ai_toolkit/core/secrets.py`, shared with hindsight) are replaced with `${secret:<id>}`.
+  (the shapes in `src/ai_toolkit/core/secrets.py`, shared with the lessons feature) are replaced with `${secret:<id>}`.
 - If any other exported file (a memory note, a skill) contains a token, export **refuses** and names the file.
   Compiled programs (such as a hook binary) are copied as-is and are not scanned.
 - On apply, each placeholder is filled from the target machine's existing config, then

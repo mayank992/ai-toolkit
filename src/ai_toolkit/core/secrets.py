@@ -1,6 +1,6 @@
 """Shapes of credentials, shared by everything that must keep them out of git.
 
-hindsight redacts them from captured text and refuses to push a store that contains one; setup
+lessons redacts them from captured text and refuses to push a store that contains one; setup
 refuses to export a file that contains one. Keep this list the single source of truth.
 """
 import re

@@ -4,7 +4,7 @@
   state    $XDG_STATE_HOME/ai-toolkit/<feature>/ (default ~/.local/state/ai-toolkit/<feature>)
   claude   $CLAUDE_CONFIG_DIR                    (default ~/.claude), plus ~/.claude.json
 
-Memory stores (hindsight) and setup snapshots are git repos whose paths come from config.
+Memory stores (lessons) and setup snapshots are git repos whose paths come from config.
 """
 import os
 import re

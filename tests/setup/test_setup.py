@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 
-from support.hindsight_env import AIT, REPO, clean_env
+from support.lessons_env import AIT, REPO, clean_env
 
 from ai_toolkit.setup import snapshot_tree as core
 

@@ -22,7 +22,7 @@ The **Rules** section of `ait ui` shows the same thing per project (`ait snapsho
 | Instructions | `~/.claude/CLAUDE.md`, `<project>/CLAUDE.md`, `<project>/CLAUDE.local.md`, and every file they import with `@path` (for example `@AGENTS.md`), up to 5 levels deep | personal or shared, which file imports it, plus whether git tracks, ignores or would show the file |
 | Memory | `~/.claude/projects/<key>/memory/*.md` and `MEMORY.md` | indexed or not, why / how to apply |
 | Hooks | user `settings.json`, project `.claude/settings.json`, `.claude/settings.local.json`, and `hooks/hooks.json` of every enabled plugin | scope (`plugin` for a plugin's), event, matcher, the script's docstring, fires in the last 30 days |
-| Lessons | hindsight's public API (`hindsight.api.lessons_for`): lessons scoped global, `lang:*` or this repo | active or candidate |
+| Lessons | the lessons feature's public API (`lessons.api.lessons_for`): lessons scoped global, `lang:*` or this repo | active or candidate |
 | Retros | `retros.jsonl` written by `ait rules retro log` | MR, Claude's share of merged code, changes applied |
 
 ## Checks

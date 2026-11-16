@@ -1,6 +1,6 @@
 ---
 name: lesson
-description: Record a lesson for hindsight (self-improving memory)
+description: Record a lesson for Claude to follow in future sessions
 argument-hint: <what Claude should do differently>
 allowed-tools: Bash(hs capture:*)
 ---

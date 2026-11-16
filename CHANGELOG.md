@@ -2,6 +2,17 @@
 
 All notable changes to this project. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] — unreleased
+
+Names only: nothing behaves differently, and everything written by 0.2 is still read.
+
+### Changed
+- The `hindsight` feature is now `lessons`: `ait lessons ...`, the `"lessons"` config section, `~/.local/state/ai-toolkit/lessons/`, `lessons.<hook>` hook targets and `src/ai_toolkit/lessons/`. `hs` is unchanged. `ait hindsight`, a `"hindsight"` config section, the old state folder (moved on first use) and `hindsight.<hook>` targets still work.
+- `HINDSIGHT_LLM_CMD`, `HINDSIGHT_NO_LLM` and `HINDSIGHT_NO_BACKGROUND` are now `AI_TOOLKIT_LLM_CMD`, `AI_TOOLKIT_NO_LLM` and `AI_TOOLKIT_NO_BACKGROUND`. The old names still work.
+- The dashboard says "feature" where it said "module": `GET /api/features` and `GET /api/features/<name>/snapshot` (were `/api/modules` and `/api/m/<name>/snapshot`), and a view is declared with `defineFeature`. Reload an open dashboard tab after upgrading.
+- Store commits are prefixed `lessons:` (were `hindsight:`), and the injected block is headed "Lessons from past corrections".
+- Modules renamed to say what they hold: `core/install.py` → `core/plugin.py`; in the lessons feature `measure.py` → `report.py`, `capture.py` → `queue.py`, `context.py` → `turn.py`, `lessons.py` → `model.py`.
+
 ## [0.2.0] — unreleased
 
 The repo is restructured as a Claude Code plugin and a single Python package. Behaviour is the same; how it is installed, invoked and laid out has changed. See [docs/decisions/0002](docs/decisions/0002-claude-code-plugin.md) and [0003](docs/decisions/0003-one-package-stdlib.md).

@@ -6,7 +6,7 @@
     {
       "name": "ai-toolkit",
       "source": "./",
-      "description": "hindsight (self-improving memory), rules and setup for Claude Code."
+      "description": "lessons (self-improving memory), rules and setup for Claude Code."
     }
   ]
 }

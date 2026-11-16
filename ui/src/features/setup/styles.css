@@ -1,4 +1,4 @@
-/* setup module; shared tokens and primitives come from the dashboard shell (ui/src/base.css). */
+/* setup feature; shared tokens and primitives come from the dashboard shell (ui/src/base.css). */
 .su-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px; }
 .su-kpi { padding: 14px 16px; text-align: left; width: 100%; display: block; color: var(--ink); cursor: pointer; }
 .su-kpi:hover { border-color: var(--line-strong); }

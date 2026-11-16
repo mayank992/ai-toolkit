@@ -7,7 +7,7 @@ import tempfile
 import textwrap
 import unittest
 
-from support.hindsight_env import AIT, clean_env
+from support.lessons_env import AIT, clean_env
 
 
 def write(path, text):

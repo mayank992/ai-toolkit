@@ -4,7 +4,7 @@ For each project Claude Code knows about, collect:
   instructions  ~/.claude/CLAUDE.md, <project>/CLAUDE.md, <project>/CLAUDE.local.md
   memory        ~/.claude/projects/<key>/memory/*.md and its MEMORY.md index
   hooks         user, project and local settings, with the hook-fire log
-  lessons       hindsight lessons scoped to this repo, its languages or global
+  lessons       lessons scoped to this repo, its languages or global
 and check them: an instructions file git would commit by accident, index entries without files,
 memory files missing from the index, hook scripts that don't exist, and rules saying the same thing
 in two layers (see checks.py). Read-only; stdlib only (python 3.9).
@@ -226,7 +226,7 @@ def script_of(command):
 
 
 def hook_target(command, script):
-    """The argument after the script when it names what runs, e.g. `run.py hindsight.capture_prompt`."""
+    """The argument after the script when it names what runs, e.g. `run.py lessons.capture_prompt`."""
     m = re.search(re.escape(os.path.basename(script)) + r"[\"']?\s+([A-Za-z_][\w.:-]*)\s*$", command) if script else None
     return m.group(1) if m else ""
 
@@ -293,9 +293,9 @@ def repo_info(project):
 
 
 def lessons(project, repo, langs):
-    """hindsight lessons that apply here, through hindsight's public API (empty if it can't load)."""
+    """lessons that apply here, through the lessons feature's public API (empty if it can't load)."""
     try:
-        from ..hindsight.api import lessons_for
+        from ..lessons.api import lessons_for
         return lessons_for(repo, langs)
     except Exception:
         return []

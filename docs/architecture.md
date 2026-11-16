@@ -1,6 +1,6 @@
 # Architecture
 
-This page covers the shape of the whole repo: how it plugs into Claude Code, how the code is organized, where data lives, and the rules that keep features independent. How each feature works inside is on its own page: [hindsight](features/hindsight.md), [rules](features/rules.md), [setup](features/setup.md).
+This page covers the shape of the whole repo: how it plugs into Claude Code, how the code is organized, where data lives, and the rules that keep features independent. How each feature works inside is on its own page: [lessons](features/lessons.md), [rules](features/rules.md), [setup](features/setup.md).
 
 ## The big picture
 
@@ -36,10 +36,10 @@ src/ai_toolkit/
     paths.py          every on-disk location (config, state, Claude Code's folder)
     config.py         ~/.config/ai-toolkit/config.json, one section per feature
     hookrun.py        the hook contract (below)
-    install.py        is the plugin enabled? which hooks are registered?
+    plugin.py         is the plugin enabled? which hooks are registered?
     legacy.py         `ait migrate-legacy`: removes what a 0.1 install.sh left behind
     jsonio.py clock.py proc.py gitutil.py secrets.py
-  hindsight/          api.py · cli.py · hooks.py · config.py · capture, detect, context, distill, curate, ...
+  lessons/            api.py · cli.py · hooks.py · config.py · queue, detect, turn, distill, curate, ...
   rules/              api.py · cli.py · inventory.py · checks.py · retro.py
   setup/              api.py · cli.py · ops.py · snapshot_tree.py · adapters/claude_code.py
   dashboard/          server.py (HTTP, read-only) · registry.py (which features it shows)
@@ -47,7 +47,7 @@ ui/                   the dashboard web app (Vite + React)
   src/shell/          frame, nav, theme, polling, error boundary
   src/sdk.ts          the contract a feature view imports as "@toolkit/ui"
   src/features/<f>/   one folder per feature view
-tests/                mirrors src/: core/ hindsight/ rules/ setup/ dashboard/ e2e/, plus support/ (fixtures, fakes)
+tests/                mirrors src/: core/ lessons/ rules/ setup/ dashboard/ e2e/, plus support/ (fixtures, fakes)
 ```
 
 ### The import rule
@@ -55,7 +55,7 @@ tests/                mirrors src/: core/ hindsight/ rules/ setup/ dashboard/ e2
 `tests/core/test_architecture.py` enforces these rules:
 
 1. **`core` imports no feature.** Anything two features need goes in `core`.
-2. **Features meet only through `api.py`.** For example, `rules` reads lessons with `hindsight.api.lessons_for(repo, langs)`; it never parses hindsight's Markdown itself.
+2. **Features meet only through `api.py`.** For example, `rules` reads lessons with `lessons.api.lessons_for(repo, langs)`; it never parses the lesson Markdown itself.
 3. **Nothing in `src/` edits `sys.path`.** Only the three entry points do, once each: `bin/ait`, `bin/hs` and `hooks/run.py`.
 
 Every feature has the same shape:
@@ -73,7 +73,7 @@ Every feature has the same shape:
 
 ## The hook contract
 
-`hooks/run.py hindsight.capture_prompt` → `core/hookrun.py`:
+`hooks/run.py lessons.capture_prompt` → `core/hookrun.py`:
 
 1. If `AI_TOOLKIT_DISABLE=1`, or the feature has `"enabled": false`, it does nothing.
 2. It parses stdin as JSON (`{}` if stdin isn't JSON) and calls `ai_toolkit.<feature>.hooks.<hook>(payload)`.
@@ -86,9 +86,9 @@ A hook's stdout is passed back to Claude Code, which is how `session_start` retu
 
 | What | Where | Owner |
 |---|---|---|
-| Settings | `~/.config/ai-toolkit/config.json` (sections `hindsight`, `rules`, `setup`) | `core.config` |
+| Settings | `~/.config/ai-toolkit/config.json` (sections `lessons`, `rules`, `setup`) | `core.config` |
 | Machine-local state | `~/.local/state/ai-toolkit/<feature>/` | `core.paths.state_dir` |
-| hindsight memory | the stores' git repos (default `~/.ai-memory/personal`) | hindsight |
+| Lesson memory | the stores' git repos (default `~/.ai-memory/personal`) | lessons |
 | setup snapshots | `setup.snapshot_dir` (a private git repo) | setup |
 | Claude Code's files (read-only, except for `ait setup apply` and `migrate-legacy`) | `$CLAUDE_CONFIG_DIR` or `~/.claude`, and `~/.claude.json` | `core.paths.claude_dir` |
 
@@ -100,16 +100,24 @@ The plugin's own data folder (`${CLAUDE_PLUGIN_DATA}`) is deliberately left unus
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/modules` | enabled features from `dashboard/registry.py`: `[{name, title, tagline}]` |
-| `GET /api/m/<name>/snapshot` | that feature's `api.snapshot()` |
+| `GET /api/features` | enabled features from `dashboard/registry.py`: `[{name, title, tagline}]` |
+| `GET /api/features/<name>/snapshot` | that feature's `api.snapshot()` |
 
 Each snapshot is built in-process on its own thread, with a 30 s timeout. A slow or failing feature returns 504 or 502 for its own card, and the other features keep working. The shell polls every 3 seconds and highlights what changed, using each view's `freshKeys`. The web app mounts `ui/src/features/<name>/index.tsx` by folder name, so to show a feature it needs an entry in `registry.py` and a folder under `ui/src/features/`.
+
+## Upgrading from 0.2
+
+In 0.3 the `hindsight` feature became `lessons`. Nothing needs doing by hand:
+
+- a `"hindsight"` config section is read until the next save, which writes `"lessons"`;
+- `~/.local/state/ai-toolkit/hindsight/` is renamed to `.../lessons/` on first use. Claude Code keeps running its old copy of the plugin until `claude plugin update`, so anything that copy still queues in the old folder is appended to the new queue;
+- `ait hindsight`, `hindsight.<hook>` hook targets and the `HINDSIGHT_*` variables still work. `hs` is unchanged.
 
 ## Upgrading from 0.1
 
 0.1 was installed by `install.sh`, which wrote hook entries into `~/.claude/settings.json` and symlinks into `~/.local/bin`, `~/.claude/commands` and `~/.claude/ai-toolkit`. Those old paths no longer exist in 0.2, so a 0.1 machine has to switch to the plugin ([getting started](getting-started.md#upgrading-from-01)). What carries over by itself:
 
 - `core.config` reads the old `hindsight.json` and `setup.json` until the first save.
-- hindsight moves its old state folder to the new location on first use.
+- The lessons feature moves its old state folder to the new location on first use.
 
 `ait migrate-legacy` (`core/legacy.py`) removes the old hook entries and links, and `ait doctor` reports any that are left.

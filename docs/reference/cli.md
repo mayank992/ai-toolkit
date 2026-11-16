@@ -9,7 +9,7 @@ usage: ait [-h] [--version] COMMAND ...
 
 ait: the ai-toolkit command line.
 
-ait hindsight ...    self-improving memory (alias: hs)
+ait lessons ...      self-improving memory (alias: hs)
 ait rules ...        every rule Claude follows in a project, and the post-merge retro
 ait setup ...        inventory your Claude Code setup and replicate it on another machine
 ait ui               open the live, read-only dashboard
@@ -19,25 +19,26 @@ ait migrate-legacy   remove what a 0.1 install.sh left behind, once the plugin i
 
 positional arguments:
   COMMAND
-    hindsight       self-improving memory: learn lessons from pushback
-    rules           see and check every rule Claude follows in a project
-    setup           inventory your Claude Code setup and replicate it on another machine
-    ui              open the live, read-only dashboard
-    doctor          check installation and hindsight health
-    snapshot        print a feature's dashboard JSON
-    migrate-legacy  remove what a 0.1 install.sh left behind (hooks in settings.json, links)
+    lessons (hindsight)
+                        self-improving memory: learn lessons from pushback
+    rules               see and check every rule Claude follows in a project
+    setup               inventory your Claude Code setup and replicate it on another machine
+    ui                  open the live, read-only dashboard
+    doctor              check installation and lessons health
+    snapshot            print a feature's dashboard JSON
+    migrate-legacy      remove what a 0.1 install.sh left behind (hooks in settings.json, links)
 
 options:
-  -h, --help        show this help message and exit
-  --version         show program's version number and exit
+  -h, --help            show this help message and exit
+  --version             show program's version number and exit
 ```
 
-## `ait hindsight`
+## `ait lessons`
 
 ```
-usage: ait hindsight [-h] COMMAND ...
+usage: ait lessons [-h] COMMAND ...
 
-hindsight: learn from pushback (alias: hs)
+lessons: learn from pushback (alias: hs; `ait hindsight` still works)
 
 positional arguments:
   COMMAND
@@ -67,19 +68,19 @@ options:
   -h, --help  show this help message and exit
 ```
 
-## `ait hindsight status`
+## `ait lessons status`
 
 ```
-usage: ait hindsight status [-h]
+usage: ait lessons status [-h]
 
 options:
   -h, --help  show this help message and exit
 ```
 
-## `ait hindsight queue`
+## `ait lessons queue`
 
 ```
-usage: ait hindsight queue [-h] [-n N] [--json]
+usage: ait lessons queue [-h] [-n N] [--json]
 
 options:
   -h, --help  show this help message and exit
@@ -87,10 +88,10 @@ options:
   --json
 ```
 
-## `ait hindsight capture`
+## `ait lessons capture`
 
 ```
-usage: ait hindsight capture [-h] [text ...]
+usage: ait lessons capture [-h] [text ...]
 
 positional arguments:
   text
@@ -99,10 +100,10 @@ options:
   -h, --help  show this help message and exit
 ```
 
-## `ait hindsight distill`
+## `ait lessons distill`
 
 ```
-usage: ait hindsight distill [-h] [--dry-run] [--no-llm] [--queue QUEUE] [--quiet]
+usage: ait lessons distill [-h] [--dry-run] [--no-llm] [--queue QUEUE] [--quiet]
 
 options:
   -h, --help     show this help message and exit
@@ -112,10 +113,10 @@ options:
   --quiet
 ```
 
-## `ait hindsight curate`
+## `ait lessons curate`
 
 ```
-usage: ait hindsight curate [-h] [--store STORE] [--no-llm] [--dry-run]
+usage: ait lessons curate [-h] [--store STORE] [--no-llm] [--dry-run]
 
 options:
   -h, --help     show this help message and exit
@@ -124,10 +125,10 @@ options:
   --dry-run
 ```
 
-## `ait hindsight list`
+## `ait lessons list`
 
 ```
-usage: ait hindsight list [-h] [--status {live,all,candidate,active,archived}] [--store STORE] [--here]
+usage: ait lessons list [-h] [--status {live,all,candidate,active,archived}] [--store STORE] [--here]
 
 options:
   -h, --help            show this help message and exit
@@ -136,10 +137,10 @@ options:
   --here                only lessons that apply to the current repo
 ```
 
-## `ait hindsight show`
+## `ait lessons show`
 
 ```
-usage: ait hindsight show [-h] id
+usage: ait lessons show [-h] id
 
 positional arguments:
   id
@@ -148,10 +149,10 @@ options:
   -h, --help  show this help message and exit
 ```
 
-## `ait hindsight edit`
+## `ait lessons edit`
 
 ```
-usage: ait hindsight edit [-h] [--store STORE] [id]
+usage: ait lessons edit [-h] [--store STORE] [id]
 
 positional arguments:
   id
@@ -161,10 +162,10 @@ options:
   --store STORE
 ```
 
-## `ait hindsight rm`
+## `ait lessons rm`
 
 ```
-usage: ait hindsight rm [-h] [-y] id
+usage: ait lessons rm [-h] [-y] id
 
 positional arguments:
   id
@@ -174,10 +175,10 @@ options:
   -y, --yes
 ```
 
-## `ait hindsight promote`
+## `ait lessons promote`
 
 ```
-usage: ait hindsight promote [-h] id
+usage: ait lessons promote [-h] id
 
 positional arguments:
   id
@@ -186,10 +187,10 @@ options:
   -h, --help  show this help message and exit
 ```
 
-## `ait hindsight retire`
+## `ait lessons retire`
 
 ```
-usage: ait hindsight retire [-h] [--reason REASON] id
+usage: ait lessons retire [-h] [--reason REASON] id
 
 positional arguments:
   id
@@ -199,10 +200,10 @@ options:
   --reason REASON
 ```
 
-## `ait hindsight dismiss`
+## `ait lessons dismiss`
 
 ```
-usage: ait hindsight dismiss [-h] [--reason REASON] id
+usage: ait lessons dismiss [-h] [--reason REASON] id
 
 positional arguments:
   id
@@ -212,10 +213,10 @@ options:
   --reason REASON
 ```
 
-## `ait hindsight restore`
+## `ait lessons restore`
 
 ```
-usage: ait hindsight restore [-h] id
+usage: ait lessons restore [-h] id
 
 positional arguments:
   id
@@ -224,10 +225,10 @@ options:
   -h, --help  show this help message and exit
 ```
 
-## `ait hindsight review`
+## `ait lessons review`
 
 ```
-usage: ait hindsight review [-h] [--store STORE] [--list]
+usage: ait lessons review [-h] [--store STORE] [--list]
 
 options:
   -h, --help     show this help message and exit
@@ -235,20 +236,20 @@ options:
   --list         non-interactive
 ```
 
-## `ait hindsight inject`
+## `ait lessons inject`
 
 ```
-usage: ait hindsight inject [-h] [--cwd CWD]
+usage: ait lessons inject [-h] [--cwd CWD]
 
 options:
   -h, --help  show this help message and exit
   --cwd CWD
 ```
 
-## `ait hindsight report`
+## `ait lessons report`
 
 ```
-usage: ait hindsight report [-h] [--store STORE] [--repo REPO] [--weeks WEEKS] [--json]
+usage: ait lessons report [-h] [--store STORE] [--repo REPO] [--weeks WEEKS] [--json]
 
 options:
   -h, --help     show this help message and exit
@@ -258,11 +259,11 @@ options:
   --json
 ```
 
-## `ait hindsight store`
+## `ait lessons store`
 
 ```
-usage: ait hindsight store [-h] [--path PATH] [--remote REMOTE] [--match MATCH] [--default]
-                           {list,add,init} [name]
+usage: ait lessons store [-h] [--path PATH] [--remote REMOTE] [--match MATCH] [--default]
+                         {list,add,init} [name]
 
 positional arguments:
   {list,add,init}
@@ -276,10 +277,10 @@ options:
   --default
 ```
 
-## `ait hindsight sync`
+## `ait lessons sync`
 
 ```
-usage: ait hindsight sync [-h] [store]
+usage: ait lessons sync [-h] [store]
 
 positional arguments:
   store
@@ -288,19 +289,19 @@ options:
   -h, --help  show this help message and exit
 ```
 
-## `ait hindsight doctor`
+## `ait lessons doctor`
 
 ```
-usage: ait hindsight doctor [-h]
+usage: ait lessons doctor [-h]
 
 options:
   -h, --help  show this help message and exit
 ```
 
-## `ait hindsight backfill`
+## `ait lessons backfill`
 
 ```
-usage: ait hindsight backfill [-h] [--dry-run] [-v]
+usage: ait lessons backfill [-h] [--dry-run] [-v]
 
 options:
   -h, --help     show this help message and exit
@@ -308,10 +309,10 @@ options:
   -v, --verbose  also list moments kept unchanged and why
 ```
 
-## `ait hindsight purge`
+## `ait lessons purge`
 
 ```
-usage: ait hindsight purge [-h] [--queue] [--local] [--store STORE] [-y]
+usage: ait lessons purge [-h] [--queue] [--local] [--store STORE] [-y]
 
 options:
   -h, --help     show this help message and exit

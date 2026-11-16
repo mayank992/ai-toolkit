@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic stand-in for `claude -p` used by tests (HINDSIGHT_LLM_CMD).
+"""Deterministic stand-in for `claude -p` used by tests (AI_TOOLKIT_LLM_CMD).
 
 Reads {"system", "input"} on stdin. Topic rules:
   clause mentions pnpm   -> lesson "Use pnpm, never npm, in this repo" (matches existing pnpm lesson);

@@ -8,10 +8,10 @@ import ast
 import os
 import unittest
 
-from support.hindsight_env import SRC
+from support.lessons_env import SRC
 
 PKG = os.path.join(SRC, "ai_toolkit")
-FEATURES = {"hindsight", "rules", "setup"}
+FEATURES = {"lessons", "rules", "setup"}
 
 
 def modules():

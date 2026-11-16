@@ -8,7 +8,7 @@ import os
 import subprocess
 import unittest
 
-from support.hindsight_env import DAY, ORG_REMOTE, REPO, Env
+from support.lessons_env import DAY, ORG_REMOTE, REPO, Env
 
 REJ_FB = ("The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, "
           "the new_string was NOT written to the file). To tell you how to proceed, the user said:\n"
@@ -116,7 +116,7 @@ class TestEndToEnd(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("REFUSING", r.stdout)
 
-        # Turning hindsight off in config makes every hook a no-op; memory stays.
+        # Turning lessons off in config makes every hook a no-op; memory stays.
         self.e.set_config(enabled=False)
         self.fire("UserPromptSubmit", {"session_id": "off", "cwd": self.org, "prompt": "no, use pnpm instead"})
         self.assertEqual(self.e.queued(), [])

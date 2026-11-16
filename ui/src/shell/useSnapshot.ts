@@ -5,14 +5,14 @@ export type Feed<S> =
   | { state: "error"; message: string; last?: S }
   | { state: "ready"; snap: S; fresh: Set<string> };
 
-/** Polls one module's snapshot; `fresh` holds keys that appeared since the previous poll. */
+/** Polls one feature's snapshot; `fresh` holds keys that appeared since the previous poll. */
 export function useSnapshot<S>(
   url: string | null,
   intervalMs: number,
   paused: boolean,
   keysOf?: (snap: S) => Iterable<string>,
 ): Feed<S> {
-  // Each feed value remembers the URL it came from, so a module never renders another module's snapshot
+  // Each feed value remembers the URL it came from, so a feature never renders another feature's snapshot
   // during the render right after switching (before the reset effect below has run).
   const [tagged, setTagged] = useState<{ url: string | null; feed: Feed<S> }>({ url, feed: { state: "loading" } });
   const setFeed = (f: Feed<S>) => setTagged({ url, feed: f });
@@ -21,7 +21,7 @@ export function useSnapshot<S>(
   const keysRef = useRef(keysOf);
   keysRef.current = keysOf;
 
-  // A different module is a different feed: forget what the previous one had.
+  // A different feature is a different feed: forget what the previous one had.
   useEffect(() => {
     seen.current = null;
     last.current = undefined;

@@ -4,7 +4,7 @@ import os
 import re
 import unittest
 
-from support.hindsight_env import REPO
+from support.lessons_env import REPO
 
 from ai_toolkit.cli import build_parser
 
@@ -19,7 +19,11 @@ def command_paths(parser, words):
     out = [" ".join(words)]
     for action in parser._actions:
         if isinstance(action, argparse._SubParsersAction):
+            seen = set()
             for name, sub in action.choices.items():
+                if id(sub) in seen:  # an alias such as `ait hindsight` is documented under its real name
+                    continue
+                seen.add(id(sub))
                 out += command_paths(sub, words + [name])
     return out
 
@@ -30,7 +34,7 @@ class TestReferenceDocs(unittest.TestCase):
         self.assertEqual(documented, set(command_paths(build_parser(), ["ait"])), "run `make docs`")
 
     def test_config_reference_lists_every_default(self):
-        from ai_toolkit.hindsight.config import DEFAULT_CONFIG
+        from ai_toolkit.lessons.config import DEFAULT_CONFIG
         from ai_toolkit.setup.snapshot_tree import DEFAULTS
         doc = read("docs", "reference", "config.md")
         for key in list(DEFAULT_CONFIG) + list(DEFAULTS) + ["enabled"]:

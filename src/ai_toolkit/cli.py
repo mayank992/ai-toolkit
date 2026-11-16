@@ -1,6 +1,6 @@
 """ait: the ai-toolkit command line.
 
-  ait hindsight ...    self-improving memory (alias: hs)
+  ait lessons ...      self-improving memory (alias: hs)
   ait rules ...        every rule Claude follows in a project, and the post-merge retro
   ait setup ...        inventory your Claude Code setup and replicate it on another machine
   ait ui               open the live, read-only dashboard
@@ -29,7 +29,7 @@ def cmd_ui(a):
         sys.exit("can't listen on 127.0.0.1:%d (%s).\nAnother dashboard may be running: lsof -nP -iTCP:%d -sTCP:LISTEN\n"
                  "or pick another port: ait ui --port %d" % (a.port, e.strerror or e, a.port, a.port + 1))
     url = "http://127.0.0.1:%d/" % a.port + ("#%s" % a.feature if a.feature else "")
-    print("ai-toolkit ui: %s (read-only, Ctrl-C to stop)" % ("http://127.0.0.1:%d/api/modules" % a.port if a.api_only else url),
+    print("ai-toolkit ui: %s (read-only, Ctrl-C to stop)" % ("http://127.0.0.1:%d/api/features" % a.port if a.api_only else url),
           flush=True)
     if not a.no_open and not a.api_only:
         import webbrowser
@@ -52,25 +52,25 @@ def cmd_snapshot(a):
 
 
 def cmd_doctor(a):
-    from .core import config, install, legacy
-    from .hindsight import cli as hs
+    from .core import config, legacy, plugin
+    from .lessons import cli as hs
     print("ai-toolkit %s" % __version__)
-    print("  plugin:  %s" % (install.plugin_enabled() or "not enabled (see docs/getting-started.md)"))
+    print("  plugin:  %s" % (plugin.plugin_enabled() or "not enabled (see docs/getting-started.md)"))
     print("  config:  %s" % config.path())
-    copy, behind = install.copy_behind()
+    copy, behind = plugin.copy_behind()
     if behind:
         print("  copy:    hooks and skills run from %s, which differs from this checkout in %d file(s)\n"
               "           (%s%s). Run `claude plugin update %s` and start a new session."
-              % (copy, len(behind), ", ".join(behind[:3]), ", ..." if len(behind) > 3 else "", install.plugin_enabled()))
+              % (copy, len(behind), ", ".join(behind[:3]), ", ..." if len(behind) > 3 else "", plugin.plugin_enabled()))
     left = legacy.plan()
     if left:
         print("  0.1:     %d leftover hook(s)/link(s) that no longer work; run `ait migrate-legacy`" % len(left))
-    print("hindsight:")
+    print("lessons:")
     hs.cmd_doctor(a)
 
 
 def cmd_migrate_legacy(a):
-    from .core import install, legacy
+    from .core import legacy, plugin
     todo = legacy.plan()
     if not todo:
         print("nothing to remove: no 0.1 hooks or links found")
@@ -79,8 +79,8 @@ def cmd_migrate_legacy(a):
         print("  remove %-5s %s  (%s)" % (kind, path, detail))
     if a.dry_run:
         return
-    if not install.plugin_enabled() and not a.force:
-        sys.exit("the ai-toolkit plugin isn't enabled, so removing these would turn hindsight off.\n"
+    if not plugin.plugin_enabled() and not a.force:
+        sys.exit("the ai-toolkit plugin isn't enabled, so removing these would turn lessons off.\n"
                  "Enable it first (docs/getting-started.md), or pass --force.")
     if not a.yes and input("remove %d item(s)? [y/N] " % len(todo)).lower() != "y":
         sys.exit("aborted")
@@ -89,13 +89,13 @@ def cmd_migrate_legacy(a):
 
 
 def build_parser():
-    from .hindsight import cli as hindsight_cli
+    from .lessons import cli as lessons_cli
     from .rules import cli as rules_cli
     from .setup import cli as setup_cli
     p = argparse.ArgumentParser(prog="ait", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--version", action="version", version="ai-toolkit %s" % __version__)
     sub = p.add_subparsers(dest="cmd", metavar="COMMAND", required=True)
-    hindsight_cli.register(sub)
+    lessons_cli.register(sub)
     rules_cli.register(sub)
     setup_cli.register(sub)
 
@@ -105,7 +105,7 @@ def build_parser():
     u.add_argument("--no-open", action="store_true", help="don't open a browser")
     u.add_argument("--api-only", action="store_true", help="serve only /api (for the Vite dev server)")
     u.set_defaults(fn=cmd_ui)
-    sub.add_parser("doctor", help="check installation and hindsight health").set_defaults(fn=cmd_doctor)
+    sub.add_parser("doctor", help="check installation and lessons health").set_defaults(fn=cmd_doctor)
     s = sub.add_parser("snapshot", help="print a feature's dashboard JSON")
     s.add_argument("feature")
     s.add_argument("--pretty", action="store_true")
@@ -124,15 +124,20 @@ def main(argv=None):
 
 
 def hs_main():
-    """`hs ...` == `ait hindsight ...` (console script for `uv tool install`)."""
-    main(["hindsight"] + sys.argv[1:])
+    """`hs ...` == `ait lessons ...` (console script for `uv tool install`)."""
+    main(["lessons"] + sys.argv[1:])
 
 
 def reference_markdown():
     """docs/reference/cli.md, generated from the parsers so it can't drift (tests/core/test_docs.py checks it)."""
     import argparse as ap
 
+    seen = set()
+
     def walk(parser, words, out):
+        if id(parser) in seen:  # an alias (`ait hindsight`) points at a parser that is already documented
+            return
+        seen.add(id(parser))
         out.append("## `%s`\n\n```\n%s```\n" % (" ".join(words), parser.format_help().replace("\n\n\n", "\n\n")))
         for action in parser._actions:
             if isinstance(action, ap._SubParsersAction):

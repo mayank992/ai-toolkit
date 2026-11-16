@@ -14,6 +14,9 @@ from . import config, paths
 from .clock import iso
 
 
+ALIASES = {"hindsight": "lessons"}  # hook targets written before 0.3
+
+
 def disabled():
     # HINDSIGHT_DISABLE is the pre-0.2 name; distill sets the new one for its own `claude -p` call.
     return os.environ.get("AI_TOOLKIT_DISABLE") == "1" or os.environ.get("HINDSIGHT_DISABLE") == "1"
@@ -38,6 +41,7 @@ def read_payload(stream=None):
 def main(argv):
     target = argv[0] if argv else ""
     feature, _, hook = target.partition(".")
+    feature = ALIASES.get(feature, feature)
     try:
         if not feature or not hook:
             raise ValueError("usage: run.py <feature>.<hook>, got %r" % target)

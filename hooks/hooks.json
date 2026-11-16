@@ -7,7 +7,7 @@
           {
             "type": "command",
             "timeout": 10,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run.py\" hindsight.session_start"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run.py\" lessons.session_start"
           }
         ]
       }
@@ -18,7 +18,7 @@
           {
             "type": "command",
             "timeout": 5,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run.py\" hindsight.capture_prompt"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run.py\" lessons.capture_prompt"
           }
         ]
       }
@@ -29,7 +29,7 @@
           {
             "type": "command",
             "timeout": 10,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run.py\" hindsight.capture_transcript"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run.py\" lessons.capture_transcript"
           }
         ]
       }
@@ -40,7 +40,7 @@
           {
             "type": "command",
             "timeout": 10,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run.py\" hindsight.session_end"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run.py\" lessons.session_end"
           }
         ]
       }

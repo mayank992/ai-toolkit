@@ -13,7 +13,7 @@ The goal is to keep the rules Claude follows in this project accurate, so genera
    - `share`: how many new merged lines trace to Claude Code transcripts (`cc_pct`, `src_pct`, `test_pct`), per session, and `least_cc_files` (where the developer or another tool wrote most of the code). It is an upper bound.
    - `sessions[].prompts` / `sessions[].pushback`: the developer's prompts on this branch; `pushback` are the ones that look corrective.
    - `notes`: MR comments with `kind` = human, self (the MR author), ai-review or bot.
-   - `rules`: the current CLAUDE.md / CLAUDE.local.md bullets, memory notes and hindsight lessons.
+   - `rules`: the current CLAUDE.md / CLAUDE.local.md bullets, memory notes and lessons.
 2. Read the pushback prompts and the human, self and ai-review notes. Ignore bot notes and questions that changed nothing. Group them into **findings**: one recurring mistake or one workflow habit each. A finding needs at least two pieces of evidence, or one from a human reviewer. For each, note whether it is about how code is written (a convention) or how the work was run (workflow: plan inputs, scope, review triage, verification).
 3. For each finding, check `rules`:
    - **covered and held**: an existing rule says it and it was not violated here; skip it.

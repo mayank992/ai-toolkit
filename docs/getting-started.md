@@ -43,7 +43,7 @@ ait doctor
 
 ## 3. First lesson
 
-Work as usual. When you push back on Claude ("no, use pnpm instead"), hindsight captures it. When the session ends, it distills the pushback into a candidate lesson, and promotes the lesson once the same pushback shows up in a second session. To record one directly:
+Work as usual. When you push back on Claude ("no, use pnpm instead"), the lessons feature captures it. When the session ends, it distills the pushback into a candidate lesson, and promotes the lesson once the same pushback shows up in a second session. To record one directly:
 
 ```
 /lesson always run the linter with --fix before committing

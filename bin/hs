@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""hs: short for `ait hindsight` (hs list, hs review, hs report, ...)."""
+"""hs: short for `ait lessons` (hs list, hs review, hs report, ...)."""
 import os
 import sys
 
@@ -7,4 +7,4 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath
 
 from ai_toolkit.cli import main  # noqa: E402
 
-main(["hindsight"] + sys.argv[1:])
+main(["lessons"] + sys.argv[1:])

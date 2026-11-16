@@ -1,8 +1,8 @@
 """Local read-only HTTP server for the ai-toolkit dashboard.
 
-  GET /api/modules              enabled features: [{name, title, tagline}]
-  GET /api/m/<name>/snapshot    that feature's api.snapshot() as JSON
-  everything else               the built web app (ui/dist), with index.html as the fallback
+  GET /api/features                   enabled features: [{name, title, tagline}]
+  GET /api/features/<name>/snapshot   that feature's api.snapshot() as JSON
+  everything else                     the built web app (ui/dist), with index.html as the fallback
 
 Snapshots are built in-process, each on its own thread with a timeout: a slow or broken feature
 answers 504/502 for its own card and never takes the others down. The server binds to 127.0.0.1,
@@ -24,7 +24,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.a
 DIST = os.path.join(REPO, "ui", "dist")
 ALLOWED_HOSTS = ("127.0.0.1", "localhost")
 SNAPSHOT_TIMEOUT_S = 30
-SNAPSHOT_PATH = re.compile(r"^/api/m/([A-Za-z0-9_-]+)/snapshot$")
+SNAPSHOT_PATH = re.compile(r"^/api/features/([A-Za-z0-9_-]+)/snapshot$")
 
 
 def discover():
@@ -71,7 +71,7 @@ class Handler(BaseHTTPRequestHandler):
         if host not in ALLOWED_HOSTS:
             return self._send(403, b"forbidden host", "text/plain")
         path = self.path.split("?", 1)[0]
-        if path == "/api/modules":
+        if path == "/api/features":
             mods = [{k: f[k] for k in ("name", "title", "tagline")} for f in discover()]
             return self._send(200, json.dumps(mods).encode(), "application/json")
         m = SNAPSHOT_PATH.match(path)

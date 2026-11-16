@@ -4,13 +4,15 @@ All settings live in one file, `~/.config/ai-toolkit/config.json` (or `$XDG_CONF
 
 ```json
 {
-  "hindsight": { "enabled": true, "stores": [ ... ], "promote_at": 2 },
+  "lessons":   { "enabled": true, "stores": [ ... ], "promote_at": 2 },
   "rules":     { "enabled": true },
   "setup":     { "enabled": true, "snapshot_dir": "~/code/ai-setup", "memory": true }
 }
 ```
 
-**Upgrading from 0.1:** until a section is first saved, it is read from the old `hindsight.json` or `setup.json` next to `config.json`. Saving writes the section into `config.json` and leaves the old file where it is. `ait hindsight status` shows which file is in use.
+**Renamed in 0.3:** the `lessons` feature was called `hindsight`. A `"hindsight"` section is still read, and the next save writes it back as `"lessons"`. `ait hindsight ...` still works, and so does `hs`.
+
+**Upgrading from 0.1:** until a section is first saved, it is read from the old `hindsight.json` or `setup.json` next to `config.json`. Saving writes the section into `config.json` and leaves the old file where it is. `ait lessons status` shows which file is in use.
 
 ## Every feature
 
@@ -18,7 +20,7 @@ All settings live in one file, `~/.config/ai-toolkit/config.json` (or `$XDG_CONF
 |---|---|---|
 | `enabled` | `true` | `false` turns the feature's hooks into no-ops and hides it from the dashboard. The CLI still works. |
 
-## `hindsight`
+## `lessons`
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -54,8 +56,8 @@ Only `enabled`. The hook-fire log and retro evidence are kept in `~/.local/state
 | `AI_TOOLKIT_NOW` | Freezes the clock (unix seconds). For tests. |
 | `AI_TOOLKIT_<TOOL>_CMD` | Replaces an external CLI (`CLAUDE`, `GLAB`, `GH`), e.g. with a fake in tests. |
 | `AI_TOOLKIT_SECRET_<ID>` | A secret value for `ait setup apply` (`AI_SETUP_SECRET_<ID>` still works). |
-| `HINDSIGHT_LLM_CMD`, `HINDSIGHT_NO_LLM=1` | Replace the distill LLM command, or force the rule-based fallback. |
-| `HINDSIGHT_NO_BACKGROUND=1` | SessionEnd doesn't start distill. For tests. |
+| `AI_TOOLKIT_LLM_CMD`, `AI_TOOLKIT_NO_LLM=1` | Replace the distill LLM command, or force the rule-based fallback. The pre-0.3 names `HINDSIGHT_LLM_CMD` and `HINDSIGHT_NO_LLM` still work. |
+| `AI_TOOLKIT_NO_BACKGROUND=1` | SessionEnd doesn't start distill. For tests. `HINDSIGHT_NO_BACKGROUND` still works. |
 
 ## Where data lives
 
@@ -64,7 +66,7 @@ Only `enabled`. The hook-fire log and retro evidence are kept in `~/.local/state
 | Code | this repo | public git |
 | Settings | `~/.config/ai-toolkit/config.json` | never |
 | Machine-local state (queues, offsets, caches, logs, backups, retro evidence) | `~/.local/state/ai-toolkit/<feature>/` | never |
-| Lessons and events | each hindsight store's `path` (git repos) | `hs sync` to each store's private remote, manually |
+| Lessons and events | each lesson store's `path` (git repos) | `hs sync` to each store's private remote, manually |
 | Setup snapshots | `setup.snapshot_dir` (git repo) | `ait setup export --push`, manually |
 
 Nothing is kept in the plugin's own data folder, because Claude Code deletes that folder when the plugin is uninstalled, and your memory has to survive an uninstall.

@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-from support.hindsight_env import AIT, REPO, clean_env
+from support.lessons_env import AIT, REPO, clean_env
 
 OTHER_HOOK = {"type": "command", "command": "/usr/local/bin/cc-status"}
 OURS = {"type": "command", "command": '"$HOME/.claude/ai-toolkit/modules/hindsight/hooks/capture_prompt.py"'}

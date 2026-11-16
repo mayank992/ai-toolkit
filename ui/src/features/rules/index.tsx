@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { defineModule, Icon, ago, type ViewProps } from "@toolkit/ui";
+import { defineFeature, Icon, ago, type ViewProps } from "@toolkit/ui";
 import type { Hook, InstructionFile, MemoryNote, Project, Scope, Snapshot } from "./types";
 import "./styles.css";
 
@@ -29,7 +29,7 @@ function StackView({ p, go }: { p: Project; go: (t: string) => void }) {
       sub: `${p.memory.notes.length} notes · ${tilde(p.memory.dir)}`, extra: null, tab: "memory" },
     { key: "hooks", icon: "ban" as const, title: "Hooks", scope: null,
       sub: `${personalHooks.length} personal, ${sharedHooks} shared with the repo, ${pluginHooks.length} from plugins`, extra: null, tab: "hooks" },
-    { key: "lessons", icon: "inject" as const, title: "hindsight lessons", scope: "user" as Scope,
+    { key: "lessons", icon: "inject" as const, title: "Lessons", scope: "user" as Scope,
       sub: `${p.lessons.filter((l) => l.status === "active").length} active, ${p.lessons.filter((l) => l.status === "candidate").length} candidates`, extra: null, tab: "lessons" },
   ];
   return (
@@ -143,7 +143,7 @@ function HooksView({ hooks }: { hooks: Hook[] }) {
 }
 
 function LessonsView({ p }: { p: Project }) {
-  if (!p.lessons.length) return <div className="card empty"><b>No hindsight lessons</b>Lessons appear after the same pushback recurs.</div>;
+  if (!p.lessons.length) return <div className="card empty"><b>No lessons</b>Lessons appear after the same pushback recurs.</div>;
   const order = ["active", "candidate"];
   const sorted = [...p.lessons].sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status));
   return (
@@ -283,7 +283,7 @@ function RulesView({ snap, route, navigate }: ViewProps<Snapshot>) {
   );
 }
 
-export default defineModule<Snapshot>({
+export default defineFeature<Snapshot>({
   View: RulesView,
   freshKeys: (s) => s.projects.flatMap((p) => [
     ...p.memory.notes.map((n) => `${p.path}|mem|${n.file}|${n.modified}`),

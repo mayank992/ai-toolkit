@@ -1,6 +1,6 @@
 # 0001: hindsight design decisions
 
-Status: accepted (0.1). Recorded together because they were made together while building hindsight.
+Status: accepted (0.1). The feature was renamed `lessons` in 0.3; this record keeps the name it had. Recorded together because they were made together while building hindsight.
 
 
 | Decision | Alternatives considered | Why |
