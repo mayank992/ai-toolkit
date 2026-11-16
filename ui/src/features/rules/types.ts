@@ -1,4 +1,4 @@
-export type Scope = "user" | "project" | "local";
+export type Scope = "user" | "project" | "local" | "plugin";
 
 export interface InstructionFile {
   scope: Scope;
@@ -9,6 +9,8 @@ export interface InstructionFile {
   rules: string[];
   git: "tracked" | "ignored" | "untracked" | "n/a";
   shared: boolean;
+  /** The CLAUDE.md that pulls this file in with `@path`; empty for the CLAUDE.md files themselves. */
+  imported_from: string;
 }
 
 export interface MemoryNote {
@@ -34,6 +36,8 @@ export interface FireStats {
 
 export interface Hook {
   scope: Scope;
+  /** Name of the plugin that registers it; empty for hooks in settings files. */
+  plugin: string;
   settings: string;
   event: string;
   matcher: string;

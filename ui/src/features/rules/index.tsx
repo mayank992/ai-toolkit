@@ -4,7 +4,9 @@ import type { Hook, InstructionFile, MemoryNote, Project, Scope, Snapshot } from
 import "./styles.css";
 
 const tilde = (p: string) => p.replace(/^\/Users\/[^/]+|^\/home\/[^/]+/, "~");
-const SCOPE_LABEL: Record<Scope, string> = { user: "personal · all projects", project: "shared · committed", local: "personal · this project" };
+const SCOPE_LABEL: Record<Scope, string> = { user: "personal · all projects", project: "shared · committed", local: "personal · this project", plugin: "from a plugin" };
+const baseName = (p: string) => p.slice(p.lastIndexOf("/") + 1);
+const fileTitle = (f: InstructionFile) => (f.imported_from ? baseName(f.path) : f.scope === "local" ? "CLAUDE.local.md" : "CLAUDE.md");
 const scopeChip = (s: Scope) => <span className={`chip ru-scope ${s}`}>{SCOPE_LABEL[s]}</span>;
 
 function gitChip(f: InstructionFile) {
@@ -15,16 +17,18 @@ function gitChip(f: InstructionFile) {
 }
 
 function StackView({ p, go }: { p: Project; go: (t: string) => void }) {
-  const personalHooks = p.hooks.filter((h) => h.scope !== "project");
+  const personalHooks = p.hooks.filter((h) => h.scope === "user" || h.scope === "local");
+  const pluginHooks = p.hooks.filter((h) => h.scope === "plugin");
+  const sharedHooks = p.hooks.length - personalHooks.length - pluginHooks.length;
   const layers = [
     ...p.instructions.map((f) => ({
-      key: f.path, icon: "layers" as const, title: f.scope === "local" ? "CLAUDE.local.md" : "CLAUDE.md", scope: f.scope,
-      sub: `${tilde(f.path)} · ${f.rules.length} rules in ${f.sections.length} sections · ${f.lines} lines`, extra: gitChip(f), tab: `file:${f.path}`,
+      key: f.path, icon: "layers" as const, title: fileTitle(f), scope: f.scope,
+      sub: `${f.imported_from ? `imported by ${baseName(f.imported_from)} · ` : ""}${tilde(f.path)} · ${f.rules.length} rules in ${f.sections.length} sections · ${f.lines} lines`, extra: gitChip(f), tab: `file:${f.path}`,
     })),
     { key: "mem", icon: "bookmark" as const, title: "Memory", scope: "local" as Scope,
       sub: `${p.memory.notes.length} notes · ${tilde(p.memory.dir)}`, extra: null, tab: "memory" },
     { key: "hooks", icon: "ban" as const, title: "Hooks", scope: null,
-      sub: `${personalHooks.length} personal, ${p.hooks.length - personalHooks.length} shared with the repo`, extra: null, tab: "hooks" },
+      sub: `${personalHooks.length} personal, ${sharedHooks} shared with the repo, ${pluginHooks.length} from plugins`, extra: null, tab: "hooks" },
     { key: "lessons", icon: "inject" as const, title: "hindsight lessons", scope: "user" as Scope,
       sub: `${p.lessons.filter((l) => l.status === "active").length} active, ${p.lessons.filter((l) => l.status === "candidate").length} candidates`, extra: null, tab: "lessons" },
   ];
@@ -124,6 +128,7 @@ function HooksView({ hooks }: { hooks: Hook[] }) {
     ["This project, personal", hooks.filter((h) => h.scope === "local")],
     ["All projects, personal", hooks.filter((h) => h.scope === "user")],
     ["Shared with the repo", hooks.filter((h) => h.scope === "project")],
+    ["From enabled plugins", hooks.filter((h) => h.scope === "plugin")],
   ];
   return (
     <div className="stack">
@@ -220,7 +225,7 @@ function RulesView({ snap, route, navigate }: ViewProps<Snapshot>) {
   const rules = p.instructions.reduce((n, f) => n + f.rules.length, 0);
   const tabs = [
     { id: "stack", label: "Stack", n: p.instructions.length + 3 },
-    ...p.instructions.map((f) => ({ id: `file:${f.path}`, label: f.scope === "local" ? "CLAUDE.local.md" : f.scope === "user" ? "User CLAUDE.md" : "CLAUDE.md", n: f.rules.length })),
+    ...p.instructions.map((f) => ({ id: `file:${f.path}`, label: !f.imported_from && f.scope === "user" ? "User CLAUDE.md" : fileTitle(f), n: f.rules.length })),
     { id: "memory", label: "Memory", n: p.memory.notes.length },
     { id: "hooks", label: "Hooks", n: p.hooks.length },
     { id: "lessons", label: "Lessons", n: p.lessons.length },

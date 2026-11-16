@@ -109,17 +109,46 @@ def git_visibility(project, path):
     return "untracked"
 
 
-def instruction_files(project):
+IMPORT_RX = re.compile(r"(?:^|(?<=\s))@((?:~/|\.{1,2}/|/)?[\w.-][\w./-]*)")
+MAX_IMPORT_DEPTH = 5  # the depth Claude Code follows
+
+
+def imported_paths(text, base_dir):
+    """Files a CLAUDE.md pulls in with `@path` (relative to the file, absolute, or ~/...), in order.
+    `@` inside code fences or code spans is not an import, and neither is anything that isn't a file."""
+    text = re.sub(r"```.*?```", "", text, flags=re.S)
+    text = re.sub(r"`[^`\n]*`", "", text)
     out = []
-    for scope, path in (("user", claude_dir("CLAUDE.md")), ("project", os.path.join(project, "CLAUDE.md")),
-                        ("local", os.path.join(project, "CLAUDE.local.md"))):
+    for m in IMPORT_RX.finditer(text):
+        ref = m.group(1).rstrip(".,;:")
+        p = home(ref[2:]) if ref.startswith("~/") else os.path.join(base_dir, ref)
+        p = os.path.normpath(p)
+        if os.path.isfile(p) and p not in out:
+            out.append(p)
+    return out
+
+
+def instruction_files(project):
+    """CLAUDE.md files in load order, each followed by the files it imports with `@path` (AGENTS.md is
+    usually reached this way). An imported file carries its importer's scope and `imported_from`."""
+    out, seen = [], set()
+
+    def add(scope, path, parent, depth):
         text = read(path)
-        if text is None:
-            continue
+        if text is None or path in seen:
+            return
+        seen.add(path)
         out.append({"scope": scope, "path": path, "lines": len(text.splitlines()), "modified": mtime(path),
                     "sections": headings(text), "rules": bullets(text),
-                    "git": git_visibility(project, path) if scope != "user" else "n/a",
-                    "shared": scope == "project"})
+                    "git": git_visibility(project, path) if path.startswith(project.rstrip("/") + "/") else "n/a",
+                    "shared": scope == "project", "imported_from": parent})
+        if depth < MAX_IMPORT_DEPTH:
+            for p in imported_paths(text, os.path.dirname(path)):
+                add(scope, p, path, depth + 1)
+
+    for scope, path in (("user", claude_dir("CLAUDE.md")), ("project", os.path.join(project, "CLAUDE.md")),
+                        ("local", os.path.join(project, "CLAUDE.local.md"))):
+        add(scope, path, "", 0)
     return out
 
 
@@ -187,27 +216,56 @@ def script_of(command):
         if not tok or tok in INTERPRETERS or tok.startswith("-"):
             continue
         t = tok.replace("${CLAUDE_PROJECT_DIR}", "{project}").replace("$CLAUDE_PROJECT_DIR", "{project}")
+        t = t.replace("${CLAUDE_PLUGIN_ROOT}", "{plugin}").replace("$CLAUDE_PLUGIN_ROOT", "{plugin}")
         t = t.replace("${HOME}", home()).replace("$HOME", home())
         if t.startswith("~/"):
             t = home(t[2:])
-        if t.startswith(("/", "{project}")):
+        if t.startswith(("/", "{project}", "{plugin}")):
             return t
     return ""
 
 
+def hook_target(command, script):
+    """The argument after the script when it names what runs, e.g. `run.py hindsight.capture_prompt`."""
+    m = re.search(re.escape(os.path.basename(script)) + r"[\"']?\s+([A-Za-z_][\w.:-]*)\s*$", command) if script else None
+    return m.group(1) if m else ""
+
+
+def enabled_plugins(project):
+    """[(name, install path)] of plugins enabled for this project (user, project or local settings)."""
+    on = {}
+    for path in (claude_dir("settings.json"), os.path.join(project, ".claude", "settings.json"),
+                 os.path.join(project, ".claude", "settings.local.json")):
+        on.update(load_json(path).get("enabledPlugins") or {})
+    installed = load_json(claude_dir("plugins", "installed_plugins.json")).get("plugins") or {}
+    out = []
+    for key in sorted(k for k, v in on.items() if v):
+        entries = [e for e in installed.get(key) or [] if isinstance(e, dict) and e.get("installPath")]
+        # a plugin installed for one project only is listed with that project's path
+        mine = [e for e in entries if not e.get("projectPath") or e["projectPath"] == project]
+        if mine:
+            out.append((key.split("@", 1)[0], mine[-1]["installPath"]))
+    return out
+
+
 def hooks(project, fire_stats):
     out = []
-    layers = (("user", claude_dir("settings.json")), ("project", os.path.join(project, ".claude", "settings.json")),
-              ("local", os.path.join(project, ".claude", "settings.local.json")))
-    for scope, path in layers:
+    layers = [("user", claude_dir("settings.json"), "", ""),
+              ("project", os.path.join(project, ".claude", "settings.json"), "", ""),
+              ("local", os.path.join(project, ".claude", "settings.local.json"), "", "")]
+    layers += [("plugin", os.path.join(root, "hooks", "hooks.json"), name, root) for name, root in enabled_plugins(project)]
+    for scope, path, plugin, root in layers:
         for event, groups in (load_json(path).get("hooks") or {}).items():
             for g in groups or []:
                 for h in g.get("hooks") or []:
                     cmd = h.get("command", "")
-                    script = script_of(cmd).replace("{project}", project)
+                    script = script_of(cmd).replace("{project}", project).replace("{plugin}", root)
                     name = os.path.splitext(os.path.basename(script))[0] if script else cmd[:40]
+                    if plugin:  # every hook of a plugin often shares one runner script, so name what it runs
+                        name = "%s: %s" % (plugin, hook_target(cmd, script) or name)
                     st = fire_stats.get(name)
-                    out.append({"scope": scope, "settings": path, "event": event, "matcher": g.get("matcher", ""),
+                    out.append({"scope": scope, "plugin": plugin, "settings": path, "event": event,
+                                "matcher": g.get("matcher", ""),
                                 "command": cmd, "script": script, "name": name,
                                 "exists": (os.path.exists(script) if script else True),
                                 "shared": scope == "project", "logged": st is not None or writes_fire_log(script),

@@ -101,6 +101,38 @@ class RulesTest(unittest.TestCase):
         self.assertEqual([f for f in v["instructions"] if f["scope"] == "local"][0]["git"], "ignored")
         self.assertNotIn("not ignored by git", " | ".join(p["text"] for p in v["problems"]))
 
+    def test_imported_instruction_files_are_followed(self):
+        # Regression: a CLAUDE.md that is only `@AGENTS.md` showed as one line with no rules.
+        p = self.proj
+        write(os.path.join(p, "CLAUDE.md"), "@AGENTS.md\n\nSee `@not/an/import.md` and mail dev@example.com\n")
+        write(os.path.join(p, "AGENTS.md"), "# Agents\n\n## Rules\n- Runtime code is standard library only\n\n@docs/style.md\n@AGENTS.md\n")
+        write(os.path.join(p, "docs", "style.md"), "## Style\n- Lines are at most 130 characters\n")
+        write(os.path.join(p, "not", "an", "import.md"), "- never listed\n")
+        files = [f for f in self.view()["instructions"] if f["scope"] == "project"]
+        self.assertEqual([os.path.relpath(f["path"], p) for f in files], ["CLAUDE.md", "AGENTS.md", os.path.join("docs", "style.md")])
+        self.assertEqual([os.path.basename(f["imported_from"]) for f in files], ["", "CLAUDE.md", "AGENTS.md"])
+        self.assertEqual(files[1]["rules"], ["Runtime code is standard library only"])
+        self.assertTrue(all(f["shared"] for f in files))
+        self.assertIn("@ ", self.cli("show"))
+
+    def test_hooks_of_enabled_plugins_are_listed(self):
+        # Regression: only settings files were read, so a plugin's hooks (ai-toolkit's own included) were invisible.
+        root = os.path.join(self.home, ".claude", "plugins", "cache", "mk", "memo", "1.0.0")
+        off = os.path.join(self.home, ".claude", "plugins", "cache", "mk", "off", "1.0.0")
+        for r in (root, off):
+            write(os.path.join(r, "hooks", "hooks.json"), {"hooks": {"SessionStart": [{"hooks": [
+                {"type": "command", "command": 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/run.py" memo.session_start'}]}]}})
+        write(os.path.join(root, "hooks", "run.py"), '"""Runs one hook."""\n')
+        write(os.path.join(self.home, ".claude", "settings.json"), {"enabledPlugins": {"memo@mk": True, "off@mk": False}})
+        write(os.path.join(self.home, ".claude", "plugins", "installed_plugins.json"), {"version": 2, "plugins": {
+            "memo@mk": [{"scope": "user", "installPath": root}], "off@mk": [{"scope": "user", "installPath": off}]}})
+        v = self.view()
+        plugin = [h for h in v["hooks"] if h["scope"] == "plugin"]
+        self.assertEqual([(h["plugin"], h["name"], h["event"]) for h in plugin], [("memo", "memo: memo.session_start", "SessionStart")])
+        self.assertTrue(plugin[0]["exists"])
+        self.assertFalse(plugin[0]["shared"])
+        self.assertNotIn("memo", " | ".join(p["text"] for p in v["problems"]), "a plugin's hooks are not the developer's to fix")
+
     def test_fire_log_counts(self):
         self.cli("fire", "guard", "ask")
         self.cli("fire", "guard", "ask")

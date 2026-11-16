@@ -34,14 +34,15 @@ def cmd_show(a):
     print("%s  %s" % (v["path"], v["repo"] or ""))
     print("\nInstructions")
     for f in v["instructions"]:
-        print("  %-8s %-55s %3d lines  git:%s" % (f["scope"], f["path"].replace(inv.home(), "~"), f["lines"], f["git"]))
+        path = ("  @ " if f["imported_from"] else "") + f["path"].replace(inv.home(), "~")
+        print("  %-8s %-55s %3d lines  git:%s" % (f["scope"], path, f["lines"], f["git"]))
     print("\nMemory (%d)" % len(v["memory"]["notes"]))
     for n in v["memory"]["notes"]:
         print("  %s %-38s %s" % (" " if n["indexed"] else "!", n["name"][:38], n["description"][:80]))
     print("\nHooks (%d)" % len(v["hooks"]))
     for h in v["hooks"]:
         f = h["fires"]["count"]
-        print("  %-7s %-16s %-6s %-24s %s" % (h["scope"], h["event"], h["matcher"] or "*", h["name"][:24],
+        print("  %-7s %-16s %-6s %-40s %s" % (h["scope"], h["event"], h["matcher"] or "*", h["name"][:40],
                                               ("%d fires" % f) if h["logged"] else "not logged"))
     print("\nLessons (%d)" % len(v["lessons"]))
     for l in v["lessons"]:

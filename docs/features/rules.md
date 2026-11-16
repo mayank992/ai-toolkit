@@ -19,9 +19,9 @@ The **Rules** section of `ait ui` shows the same thing per project (`ait snapsho
 
 | Layer | From | Marked |
 |---|---|---|
-| Instructions | `~/.claude/CLAUDE.md`, `<project>/CLAUDE.md`, `<project>/CLAUDE.local.md` | personal or shared, plus whether git tracks, ignores or would show the file |
+| Instructions | `~/.claude/CLAUDE.md`, `<project>/CLAUDE.md`, `<project>/CLAUDE.local.md`, and every file they import with `@path` (for example `@AGENTS.md`), up to 5 levels deep | personal or shared, which file imports it, plus whether git tracks, ignores or would show the file |
 | Memory | `~/.claude/projects/<key>/memory/*.md` and `MEMORY.md` | indexed or not, why / how to apply |
-| Hooks | user `settings.json`, project `.claude/settings.json`, `.claude/settings.local.json` | scope, event, matcher, the script's docstring, fires in the last 30 days |
+| Hooks | user `settings.json`, project `.claude/settings.json`, `.claude/settings.local.json`, and `hooks/hooks.json` of every enabled plugin | scope (`plugin` for a plugin's), event, matcher, the script's docstring, fires in the last 30 days |
 | Lessons | hindsight's public API (`hindsight.api.lessons_for`): lessons scoped global, `lang:*` or this repo | active or candidate |
 | Retros | `retros.jsonl` written by `ait rules retro log` | MR, Claude's share of merged code, changes applied |
 
@@ -59,6 +59,6 @@ Evidence files stay local under `~/.local/state/ai-toolkit/rules/retro/`.
 
 `src/ai_toolkit/rules/`: `inventory.py` collects the layers, `checks.py` holds one function per check, `retro.py`
 gathers MR evidence (forge CLIs run through `core.proc.tool_cmd`, so `AI_TOOLKIT_GLAB_CMD` / `AI_TOOLKIT_GH_CMD`
-swap in fakes), `cli.py` is `ait rules`. Hooks registered by enabled plugins are not listed yet; only settings files are read.
+swap in fakes), `cli.py` is `ait rules`.
 
 Tests: `tests/rules/` (offline, temporary HOME, fake `glab`).
