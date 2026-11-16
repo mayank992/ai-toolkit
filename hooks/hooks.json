@@ -1,0 +1,49 @@
+{
+  "description": "ai-toolkit hooks. Each runs `hooks/run.py <feature>.<hook>`; see src/ai_toolkit/<feature>/hooks.py.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run.py\" hindsight.session_start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 5,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run.py\" hindsight.capture_prompt"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run.py\" hindsight.capture_transcript"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run.py\" hindsight.session_end"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "bin/ait",
+      "runtimeArgs": ["ui", "--no-open", "--port", "7329"],
+      "port": 7329
+    }
+  ]
+}

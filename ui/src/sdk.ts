@@ -1,15 +1,15 @@
 /**
  * The contract between the dashboard shell and module UIs, imported by modules as "@toolkit/ui".
  *
- * A module mounts into the dashboard by shipping modules/<name>/ui/index.tsx whose default export is
- * `defineModule({ View, freshKeys })`, plus a "ui" block in its module.json naming the command that
- * prints its snapshot JSON. The shell owns the page frame, theme, polling and the HTTP server; the
+ * A feature mounts into the dashboard by shipping src/features/<name>/index.tsx whose default export is
+ * `defineModule({ View, freshKeys })`, plus an entry in src/ai_toolkit/dashboard/registry.py naming the
+ * Python module whose snapshot() feeds it. The shell owns the page frame, theme, polling and the HTTP server; the
  * module owns everything inside its own view.
  */
 import type { ComponentType } from "react";
 
-export { default as Icon, type IconName } from "./Icon";
-export { ago, stamp } from "./time";
+export { default as Icon, type IconName } from "./shell/Icon";
+export { ago, stamp } from "./shell/time";
 
 export interface ViewProps<S> {
   /** The module's latest snapshot, as printed by its snapshot command. */

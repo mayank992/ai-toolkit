@@ -1,0 +1,12 @@
+{
+  "name": "ai-toolkit",
+  "owner": { "name": "Mayank Jindal", "url": "https://github.com/mayank992" },
+  "description": "ai-toolkit for Claude Code, as a single plugin.",
+  "plugins": [
+    {
+      "name": "ai-toolkit",
+      "source": "./",
+      "description": "hindsight (self-improving memory), rules and setup for Claude Code."
+    }
+  ]
+}

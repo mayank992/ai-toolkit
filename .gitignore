@@ -2,3 +2,10 @@ __pycache__/
 *.pyc
 .DS_Store
 *.tmp
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+graphify-out/

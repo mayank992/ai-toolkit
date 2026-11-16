@@ -1,0 +1,9 @@
+{
+  "name": "ai-toolkit",
+  "displayName": "ai-toolkit",
+  "version": "0.2.0",
+  "description": "Self-improving memory (hindsight), a view of every rule Claude follows (rules), and a portable Claude Code setup (setup).",
+  "author": { "name": "Mayank Jindal", "url": "https://github.com/mayank992" },
+  "repository": "https://github.com/mayank992/ai-toolkit",
+  "keywords": ["memory", "lessons", "rules", "hooks", "setup"]
+}

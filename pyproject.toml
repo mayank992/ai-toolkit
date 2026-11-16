@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ai-toolkit"
+version = "0.2.0"
+description = "Self-improving memory, rule visibility and portable setup for Claude Code"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []  # stdlib only: hooks run under macOS /usr/bin/python3 (3.9)
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+]
+
+[project.scripts]
+ait = "ai_toolkit.cli:main"
+hs = "ai_toolkit.cli:hs_main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ai_toolkit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+addopts = "-q --import-mode=importlib"
+
+[tool.ruff]
+line-length = 130
+target-version = "py39"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+# E731: short lambdas are used as local helpers on purpose. E741: `l` is the house name for a lesson.
+ignore = ["E731", "E741"]
+
+[tool.ruff.lint.per-file-ignores]
+"bin/*" = ["E402"]
