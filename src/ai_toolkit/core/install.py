@@ -58,3 +58,41 @@ def hook_status(feature):
             out.append({"event": event, "hook": hook, "registered": bool(via), "via": via})
     return out
 
+
+
+RUNTIME_DIRS = ("src", "hooks", "skills", "bin", ".claude-plugin")
+
+
+def installed_copy(settings=None):
+    """The folder Claude Code runs the plugin from (a copy it made at install time), or None."""
+    key = plugin_enabled(settings)
+    plugins = (read_json(paths.claude_dir("plugins", "installed_plugins.json"), {}) or {}).get("plugins") or {}
+    entries = [e for e in plugins.get(key) or [] if isinstance(e, dict) and e.get("installPath")]
+    return entries[-1]["installPath"] if entries else None
+
+
+def _runtime_files(root):
+    out = {}
+    for d in RUNTIME_DIRS:
+        for base, dirs, files in os.walk(os.path.join(root, d)):
+            dirs[:] = [x for x in dirs if x != "__pycache__"]
+            for f in files:
+                if f.endswith(".pyc") or f == ".DS_Store":
+                    continue
+                p = os.path.join(base, f)
+                try:
+                    with open(p, "rb") as fh:
+                        out[os.path.relpath(p, root)] = fh.read()
+                except OSError:
+                    pass
+    return out
+
+
+def copy_behind():
+    """(installed copy, [files that differ from this checkout]) when hooks run from a different folder
+    than this code; (None, []) when they are the same folder or the plugin isn't installed."""
+    copy = installed_copy()
+    if not copy or not os.path.isdir(copy) or os.path.realpath(copy) == os.path.realpath(REPO_ROOT):
+        return None, []
+    here, there = _runtime_files(REPO_ROOT), _runtime_files(copy)
+    return copy, sorted(f for f in set(here) | set(there) if here.get(f) != there.get(f))

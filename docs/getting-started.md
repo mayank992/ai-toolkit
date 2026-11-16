@@ -11,7 +11,7 @@ claude plugin marketplace add mayank992/ai-toolkit
 claude plugin install ai-toolkit@ai-toolkit
 ```
 
-From a local clone. The plugin loads in place, so your edits take effect at the next session start:
+From a local clone. Claude Code copies the plugin when it installs it, so after you change hook or skill code run `claude plugin update ai-toolkit@ai-toolkit` and start a new session (`ait doctor` says when the copy is behind):
 
 ```bash
 git clone git@github.com:mayank992/ai-toolkit.git ~/code/repos/ai-toolkit

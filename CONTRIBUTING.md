@@ -4,9 +4,11 @@
 
 ```bash
 git clone git@github.com:mayank992/ai-toolkit.git && cd ai-toolkit
-claude plugin marketplace add "$PWD"            # loads in place: edits apply at the next session start
+claude plugin marketplace add "$PWD"            # Claude Code copies the plugin; see the note below
 claude plugin install ai-toolkit@ai-toolkit
 ```
+
+Claude Code runs the plugin from a copy it makes at install time (`~/.claude/plugins/cache/`), not from your clone. After changing hooks or skills, run `claude plugin update ai-toolkit@ai-toolkit` and start a new session. `ait doctor` lists the files that differ.
 
 Tools: [uv](https://docs.astral.sh/uv/) for tests and lint, and pnpm for the dashboard. Runtime code uses the standard library only.
 

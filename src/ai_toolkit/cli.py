@@ -57,6 +57,11 @@ def cmd_doctor(a):
     print("ai-toolkit %s" % __version__)
     print("  plugin:  %s" % (install.plugin_enabled() or "not enabled (see docs/getting-started.md)"))
     print("  config:  %s" % config.path())
+    copy, behind = install.copy_behind()
+    if behind:
+        print("  copy:    hooks and skills run from %s, which differs from this checkout in %d file(s)\n"
+              "           (%s%s). Run `claude plugin update %s` and start a new session."
+              % (copy, len(behind), ", ".join(behind[:3]), ", ..." if len(behind) > 3 else "", install.plugin_enabled()))
     left = legacy.plan()
     if left:
         print("  0.1:     %d leftover hook(s)/link(s) that no longer work; run `ait migrate-legacy`" % len(left))

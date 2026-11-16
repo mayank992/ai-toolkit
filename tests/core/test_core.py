@@ -108,5 +108,26 @@ class TestStateMove(unittest.TestCase):
             self.assertFalse(os.path.exists(old))
 
 
+class TestInstalledCopy(unittest.TestCase):
+    def test_reports_files_that_differ_from_the_checkout(self):
+        # Regression: docs said a local plugin loads in place; Claude Code runs a copy, which went stale unnoticed.
+        from ai_toolkit.core import install
+        with home_env() as home:
+            self.assertEqual(install.copy_behind(), (None, []), "plugin not installed")
+            copy = os.path.join(home, ".claude", "plugins", "cache", "ai-toolkit", "ai-toolkit", "0.2.0")
+            for d in install.RUNTIME_DIRS:
+                shutil.copytree(os.path.join(install.REPO_ROOT, d), os.path.join(copy, d),
+                                ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store"))
+            write(os.path.join(home, ".claude", "settings.json"), {"enabledPlugins": {"ai-toolkit@ai-toolkit": True}})
+            write(os.path.join(home, ".claude", "plugins", "installed_plugins.json"),
+                  {"version": 2, "plugins": {"ai-toolkit@ai-toolkit": [{"scope": "user", "installPath": copy}]}})
+            self.assertEqual(install.copy_behind(), (copy, []), "an identical copy is not behind")
+            with open(os.path.join(copy, "hooks", "run.py"), "a") as f:
+                f.write("# older\n")
+            os.remove(os.path.join(copy, "src", "ai_toolkit", "cli.py"))
+            self.assertEqual(install.copy_behind(), (copy, [os.path.join("hooks", "run.py"),
+                                                            os.path.join("src", "ai_toolkit", "cli.py")]))
+
+
 if __name__ == "__main__":
     unittest.main()

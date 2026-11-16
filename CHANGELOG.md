@@ -13,7 +13,17 @@ The repo is restructured as a Claude Code plugin and a single Python package. Be
 - `"enabled": false` in a feature's config section turns its hooks off and hides it from the dashboard.
 - Docs: getting started, architecture, a page per feature, generated CLI reference, configuration reference, privacy, decision records, contributing.
 - CI on Python 3.9 and 3.13 (Linux and macOS), plus the dashboard typecheck and build. `make check` runs the same steps.
+- hindsight captures what you add when you send a request again (signal `resend`), and stops counting the tool calls you rejected on the way as pushbacks.
+- hindsight flags a lesson you repeated in 2+ sessions where it was injected as "make it a hook", in `hs report` and the dashboard.
 - Tests for the import rules between packages, config fallback, `CLAUDE_CONFIG_DIR`, the hook runner and the docs references.
+
+### Fixed
+- `hs report` counted headless runs (SDK jobs, `claude -p`) as sessions, which pushed the weekly pushback rate and every lesson's before/after rate toward zero. Only sessions with a SessionStart, an injection or a pushback count now.
+- Pushbacks distilled late (a backlog, or after `hs backfill`) were dated at distill time. Reports now use the time they were captured, so before/after rates and the weekly chart put them in the right place.
+- SessionEnd no longer starts a distill process when the queue is empty and one ran in the last 24 hours.
+- `ait doctor` failed for good after one error in `hindsight.log`. It now looks at the last 7 days.
+- `ait rules show` follows `@path` imports in CLAUDE.md files (so `@AGENTS.md` is listed with its rules) and lists the hooks of enabled plugins.
+- Docs said a plugin added from a local clone loads in place. Claude Code runs a copy; `ait doctor` now reports when that copy differs from the checkout.
 
 ### Changed
 - Code moved from `modules/*/lib` to `src/ai_toolkit/{core,hindsight,rules,setup,dashboard}`, and dashboard views moved to `ui/src/features/`.

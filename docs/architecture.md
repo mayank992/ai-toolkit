@@ -25,7 +25,7 @@ Claude Code is the host, and ai-toolkit never patches it. It integrates through 
 | Skills | `skills/<name>/SKILL.md` | `/lesson` and `/mr-retro`. They call `hs` and `ait` |
 | Executables | `bin/ait`, `bin/hs` | On the Bash tool's PATH while the plugin is enabled, so skills can call them. Link them into `~/.local/bin` to use them in your own terminal |
 
-A plugin added from a local folder **loads in place**. Edits in a clone take effect at the next Claude Code session start, so there's no install step to repeat while developing.
+Claude Code runs a plugin from **its own copy**, made at install time under `~/.claude/plugins/cache/`, even when the marketplace is a local folder. `bin/ait` linked from a clone runs the clone, but hooks and skills run the copy. After changing hook or skill code, run `claude plugin update ai-toolkit@ai-toolkit` and start a new session; `ait doctor` reports when the copy differs from the checkout.
 
 ## Code layout
 
